@@ -1,0 +1,118 @@
+services:
+    rabbitmq:
+        image: rabbitmq:3.13-management
+        container_name: rabbitmq
+        hostname: rabbitmq
+        environment:
+            RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-guest}   # Логин по умолчанию
+            RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-guest} # Пароль по умолчанию
+            RABBITMQ_DEFAULT_VHOST: /                       # Виртуальный хост
+        ports:
+            - "5672:5672"      # AMQP порт для приложений
+            - "15672:15672"    # Веб-интерфейс управления
+        networks:
+            - sail
+        healthcheck:
+            test: ["CMD-SHELL", "rabbitmqctl status"]
+            interval: 10s
+            timeout: 5s
+            retries: 10
+
+    face-api:
+        build:
+            context: ./docker/face-api      # Путь к Dockerfile для face_api
+            dockerfile: Dockerfile
+        container_name: face-api
+        runtime: nvidia
+        deploy:
+            resources:
+                reservations:
+                    devices:
+                        - driver: nvidia
+                          count: all
+                          capabilities: [gpu]     # Требование к GPU
+        networks:
+            - sail
+        ports:
+            - "5000:5000"                   # Открытый порт для REST API face_recognition
+
+    laravel.test:
+        build:
+            context: ./docker/8.4       # Путь к кастомному Dockerfile с PHP 8.4 и imagick
+            args:
+                WWWUSER: "${WWWUSER:-1000}"       # UID пользователя внутри контейнера
+                WWWGROUP: "${WWWGROUP:-1000}"     # GID группы внутри контейнера
+        image: sail-laravel/app
+        container_name: sail-laravel.test
+        extra_hosts:
+            - "host.docker.internal:host-gateway"  # Проброс хоста в контейнер
+        dns:
+            - 8.8.8.8
+            - 1.1.1.1
+        ports:
+            - "${APP_PORT:-80}:80"                     # HTTP доступ
+            - "${VITE_PORT:-5173}:${VITE_PORT:-5173}"  # Vite
+        environment:
+            LARAVEL_SAIL: 1
+            XDEBUG_MODE: "${SAIL_XDEBUG_MODE:-off}"
+            XDEBUG_CONFIG: "${SAIL_XDEBUG_CONFIG:-client_host=host.docker.internal}"
+            IGNITION_LOCAL_SITES_PATH: "${PWD}"
+            SUPERVISOR_PHP_USER: "${SUPERVISOR_PHP_USER:-sail}"
+            SUPERVISOR_PHP_COMMAND: "${SUPERVISOR_PHP_COMMAND:-php artisan queue:work}"
+            NVIDIA_VISIBLE_DEVICES: all               # Чтобы видеть GPU из Laravel, если нужно
+        volumes:
+            - ".:/var/www/html"                        # Основной код Laravel
+            - "/mnt/d/Fotos:/dfotos"                   # Проброс Windows-папки с изображениями
+        networks:
+            - sail
+        depends_on:
+            - mysql
+            - rabbitmq
+            - face-api
+
+    mysql:
+        image: mysql/mysql-server:8.0
+        ports:
+            - "${FORWARD_DB_PORT:-3306}:3306"
+        environment:
+            MYSQL_ROOT_PASSWORD: "${DB_PASSWORD}"
+            MYSQL_ROOT_HOST: "%"
+            MYSQL_DATABASE: "${DB_DATABASE}"
+            MYSQL_USER: "${DB_USERNAME}"
+            MYSQL_PASSWORD: "${DB_PASSWORD}"
+            MYSQL_ALLOW_EMPTY_PASSWORD: 1
+        volumes:
+            - sail-mysql:/var/lib/mysql
+            - ./docker/mysql/create-testing-database.sh:/docker-entrypoint-initdb.d/10-create-testing-database.sh
+        networks:
+            - sail
+        healthcheck:
+            test: ["CMD", "mysqladmin", "ping", "-p${DB_PASSWORD}"]
+            interval: 5s
+            timeout: 10s
+            retries: 10
+
+    phpmyadmin:
+        image: phpmyadmin/phpmyadmin:latest
+        restart: always
+        depends_on:
+            - mysql
+        networks:
+            - sail
+        ports:
+            - 8090:80
+        environment:
+            PMA_HOST: mysql
+            PMA_PORT: 3306
+            MYSQL_USERNAME: "${DB_USERNAME}"
+            MYSQL_ROOT_PASSWORD: "${DB_PASSWORD}"
+        # volumes:
+        #    - /home/freedom/projects/pma:/var/www/html
+
+networks:
+    sail:
+        driver: bridge
+
+volumes:
+    sail-mysql:
+        driver: local

@@ -1,0 +1,50 @@
+
+      [2m+29 vendor frames [22m
+
+  30  artisan:16
+      Illuminate\Foundation\Application::handleCommand()
+
+usermod: no changes
+
+   Illuminate\Database\QueryException 
+
+  SQLSTATE[42S02]: Base table or view not found: 1146 Table 'mig.cache' doesn't exist (Connection: mysql, SQL: select * from `cache` where `key` in (mig_cache_illuminate:queue:restart))
+
+  at vendor/laravel/framework/src/Illuminate/Database/Connection.php:822
+    818▕                     $this->getName(), $query, $this->prepareBindings($bindings), $e
+    819▕                 );
+    820▕             }
+    821▕ 
+  ➜ 822▕             throw new QueryException(
+    823▕                 $this->getName(), $query, $this->prepareBindings($bindings), $e
+    824▕             );
+    825▕         }
+    826▕     }
+
+      [2m+29 vendor frames [22m
+
+  30  artisan:16
+      Illuminate\Foundation\Application::handleCommand()
+
+usermod: no changes
+
+   Illuminate\Database\QueryException 
+
+  SQLSTATE[42S02]: Base table or view not found: 1146 Table 'mig.cache' doesn't exist (Connection: mysql, SQL: select * from `cache` where `key` in (mig_cache_illuminate:queue:restart))
+
+  at vendor/laravel/framework/src/Illuminate/Database/Connection.php:822
+    818▕                     $this->getName(), $query, $this->prepareBindings($bindings), $e
+    819▕                 );
+    820▕             }
+    821▕ 
+  ➜ 822▕             throw new QueryException(
+    823▕                 $this->getName(), $query, $this->prepareBindings($bindings), $e
+    824▕             );
+    825▕         }
+    826▕     }
+
+      [2m+29 vendor frames [22m
+
+  30  artisan:16
+      Illuminate\Foundation\Application::handleCommand()
+

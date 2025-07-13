@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+
+if [ "$SUPERVISOR_PHP_USER" != "root" ] && [ "$SUPERVISOR_PHP_USER" != "sail" ]; then
+    echo "You should set SUPERVISOR_PHP_USER to either 'sail' or 'root'."
+    exit 1
+fi
+
+if [ ! -z "$WWWUSER" ]; then
+    CURRENT_UID=$(id -u sail)
+    if [ "$CURRENT_UID" != "$WWWUSER" ]; then
+        usermod -u $WWWUSER sail
+    fi
+fi
+
+
+if [ ! -d /.composer ]; then
+    mkdir /.composer
+fi
+
+chmod -R ugo+rw /.composer
+
+# Установка прав на storage и bootstrap/cache
+# Установим права только если storage/logs/laravel.log недоступен
+if [ ! -w /var/www/html/storage/logs/laravel.log ]; then
+    echo "Fixing permissions on storage and bootstrap/cache..."
+    chown -R $WWWUSER:$WWWGROUP /var/www/html/storage /var/www/html/bootstrap/cache
+    chmod -R ug+rwX /var/www/html/storage /var/www/html/bootstrap/cache
+fi
+
+# Создание симлинка, если отсутствует
+if [ ! -L /var/www/html/public/storage ]; then
+    echo "Creating storage symlink..."
+    gosu $WWWUSER php artisan storage:link || true
+fi
+
+if [ $# -gt 0 ]; then
+    if [ "$SUPERVISOR_PHP_USER" = "root" ]; then
+        exec "$@"
+    else
+        exec gosu $WWWUSER "$@"
+    fi
+else
+    exec /usr/bin/supervisord -c /etc/supervisor/conf.d/supervisord.conf
+fi
