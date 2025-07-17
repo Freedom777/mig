@@ -6,9 +6,8 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\FaceDeleteRequest;
 use App\Http\Requests\FaceSaveRequest;
 use App\Models\Face;
+use App\Models\Image;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
 
 class ApiFaceController extends Controller
 {
@@ -17,6 +16,7 @@ class ApiFaceController extends Controller
         $imageId = $request->input('image_id');
 
         $faces = Face::where('image_id', $imageId)
+            ->where('status', Image::STATUS_PROCESS)
             ->orderBy('face_index')
             ->get(['id', 'image_id', 'face_index', 'name']);
 

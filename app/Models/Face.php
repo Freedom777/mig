@@ -7,6 +7,11 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Face extends Model
 {
+    const STATUS_PROCESS = 'process';
+    const STATUS_UNKNOWN = 'unknown';
+    const STATUS_NOT_FACE = 'not_face';
+    const STATUS_OK = 'ok';
+
     use SoftDeletes;
 
     protected $casts = [
@@ -18,6 +23,7 @@ class Face extends Model
         'face_index',
         'name',
         'encoding',
+        'status',
     ];
 
     public function images()

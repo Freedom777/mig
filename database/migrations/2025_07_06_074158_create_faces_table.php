@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\Face;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
@@ -18,6 +19,7 @@ return new class extends Migration
             $table->unsignedTinyInteger('face_index');
             $table->string('name')->nullable();
             $table->json('encoding');
+            $table->enum('status', [Face::STATUS_PROCESS, Face::STATUS_UNKNOWN, Face::STATUS_NOT_FACE, Face::STATUS_OK])->default(Face::STATUS_PROCESS);
             $table->timestamps();
             $table->softDeletes();
 

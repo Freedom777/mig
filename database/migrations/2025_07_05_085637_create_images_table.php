@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\Image;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
@@ -33,6 +34,8 @@ return new class extends Migration {
             $table->string('thumbnail_height')->nullable();
 
             $table->timestamps();
+
+            $table->enum('status', [Image::STATUS_PROCESS, Image::STATUS_OK])->default(Image::STATUS_PROCESS);
 
             $table->index(['disk', 'path', 'filename'], 'disk_path_filename_index');
             $table->index(['faces_checked'], 'faces_checked_index');

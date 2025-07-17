@@ -8,6 +8,9 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Image extends Model
 {
+    const STATUS_PROCESS = 'process';
+    const STATUS_OK = 'ok';
+
     protected $fillable = [
         'image_geolocation_point_id',
 
@@ -31,6 +34,8 @@ class Image extends Model
         'thumbnail_method',
         'thumbnail_width',
         'thumbnail_height',
+
+        'status',
     ];
 
     // Мутатор для записи
