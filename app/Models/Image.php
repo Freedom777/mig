@@ -54,4 +54,18 @@ class Image extends Model
     {
         return $this->belongsToMany(Face::class, 'rel_images_faces', 'image_id', 'face_id');
     }
+
+    public function previous()
+    {
+        return static::where('id', '<', $this->id)
+            ->orderBy('id', 'desc')
+            ->first();
+    }
+
+    public function next()
+    {
+        return static::where('id', '>', $this->id)
+            ->orderBy('id', 'asc')
+            ->first();
+    }
 }

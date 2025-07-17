@@ -7,7 +7,7 @@ use App\Jobs\ThumbnailProcessJob;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
 
-class ThumbnailProcessController extends Controller
+class ApiThumbnailProcessController extends Controller
 {
     public function process(Request $request)
     {

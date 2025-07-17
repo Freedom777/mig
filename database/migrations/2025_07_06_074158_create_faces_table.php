@@ -15,9 +15,11 @@ return new class extends Migration
             $table->id();
             $table->unsignedBigInteger('parent_id')->nullable(); // nullable for updating afterward
             $table->unsignedBigInteger('image_id')->nullable(); // nullable for updating afterward
+            $table->unsignedTinyInteger('face_index');
             $table->string('name')->nullable();
             $table->json('encoding');
             $table->timestamps();
+            $table->softDeletes();
 
             $table->foreign('image_id')
                 ->references('id')->on('images')

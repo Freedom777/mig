@@ -1,5 +1,12 @@
 FROM ubuntu:22.04
 
+ARG WWWUSER
+ARG WWWGROUP
+
+# Создание пользователя sail
+RUN groupadd --force -g ${WWWGROUP} sail && \
+    useradd -ms /bin/bash --no-user-group -g ${WWWGROUP} -u ${WWWUSER} sail
+
 LABEL maintainer="Олег Laravel 12 + PHP 8.4 + Imagick"
 
 ENV DEBIAN_FRONTEND=noninteractive
@@ -31,12 +38,6 @@ RUN curl -fsSL https://deb.nodesource.com/setup_${NODE_VERSION}.x | bash - && \
 
 # Установка Composer
 RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
-
-# Создание пользователя sail
-ARG WWWUSER=1337
-ARG WWWGROUP=1337
-RUN groupadd --force -g ${WWWGROUP} sail && \
-    useradd -ms /bin/bash --no-user-group -g ${WWWGROUP} -u ${WWWUSER} sail
 
 # Рабочая директория
 WORKDIR /var/www/html

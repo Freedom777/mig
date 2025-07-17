@@ -43,7 +43,9 @@ class FaceProcessJob implements ShouldQueue
             // Отправка изображения на Python API
             $response = Http::attach(
                 'image', file_get_contents($imagePath), $image->filename
-            )->post(config('app.face_api_url') . '/encode');
+            )->post(config('app.face_api_url') . '/encode', [
+                'original_path' => $imagePath
+            ]);
 
             if (!$response->successful()) {
                 throw new \Exception('Face API /encode failed: ' . $response->body());
@@ -51,9 +53,8 @@ class FaceProcessJob implements ShouldQueue
 
             $newEncodings = $response->json()['encodings'] ?? [];
             $faces = Face::all();
-            // $facesAttach = [];
 
-            foreach ($newEncodings as $newEncoding) {
+            foreach ($newEncodings as $idx => $newEncoding) {
                 $newFace = new Face();
                 $newFace->encoding = $newEncoding;
 
@@ -80,13 +81,13 @@ class FaceProcessJob implements ShouldQueue
                 }
 
                 $newFace->image_id = $image->id;
+                $newFace->idx = $idx;
                 $newFace->save();
                 $faces[] = $newFace;
-                // $facesAttach[] = $newFace->id;
             }
 
             // $image->faces()->sync($facesAttach);
-            $image->debug_filename = $response->json()['debug_image_path'];
+            $image->debug_filename = basename($response->json()['debug_image_path']);
             $image->faces_checked = 1;
             $image->save();
         } catch (\Exception $e) {

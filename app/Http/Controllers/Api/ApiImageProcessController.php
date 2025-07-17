@@ -7,7 +7,7 @@ use App\Jobs\ImageProcessJob;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
 
-class ImageProcessController extends Controller
+class ApiImageProcessController extends Controller
 {
     public function process(Request $request)
     {

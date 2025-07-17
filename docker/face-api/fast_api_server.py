@@ -17,7 +17,7 @@ sys.stdout.reconfigure(line_buffering=True)
 
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = '/tmp'
-MAX_DIM = 1600  # Ограничение на размер изображения
+MAX_DIM = 2000  # Ограничение на размер изображения
 
 def resize_image_if_needed(img):
     """Изменяет размер изображения если оно превышает MAX_DIM"""
@@ -31,23 +31,32 @@ def resize_image_if_needed(img):
         return img.resize(new_size, Image.LANCZOS)  # Используем PIL для ресайза
     return img
 
-def save_debug_image(image_array, locations, filename):
-    """Сохраняет отладочное изображение с разметкой лиц"""
-    # Конвертируем numpy array в PIL Image
+def save_debug_image(image_array, locations, original_filename):
+    """
+    Сохраняет отладочное изображение в /dfotos/.../debug/ по пути, соответствующему исходному изображению.
+    """
+    # Извлекаем относительный путь из имени файла
+    relative_path = original_filename.replace('\\', '/').lstrip('/')
+    if relative_path.startswith('dfotos/'):
+        relative_path = relative_path[len('dfotos/'):]  # удалить префикс, если есть
+
+    # Каталог сохранения
+    base_dir = '/dfotos'
+    debug_dir = os.path.join(base_dir, os.path.dirname(relative_path), 'debug')
+    os.makedirs(debug_dir, exist_ok=True)
+
+    # Сохраняем как debug_<basename>
+    base_name = os.path.basename(original_filename)
+    debug_path = os.path.join(debug_dir, f"debug_{base_name}")
+
+    # Рисуем и сохраняем
     img = Image.fromarray(image_array)
     draw = ImageDraw.Draw(img)
-
-    # Рисуем прямоугольники и подписи
     for i, (top, right, bottom, left) in enumerate(locations):
-        # Зелёный прямоугольник толщиной 3px
         draw.rectangle([(left, top), (right, bottom)], outline="green", width=3)
-
-        # Красная подпись с номером лица
         draw.text((left + 5, bottom - 20), f"Face {i}", fill="red")
-
-    # Сохраняем в /tmp
-    debug_path = f"/tmp/debug_{filename}"
     img.save(debug_path)
+
     return debug_path
 
 @app.route('/encode', methods=['POST'])
@@ -58,6 +67,7 @@ def encode_faces():
         return jsonify({'error': 'No image file provided'}), 400
 
     image_file = request.files['image']
+    original_path = request.form.get('original_path')
 
     # Проверка наличия файла
     if image_file.filename == '':
@@ -123,7 +133,7 @@ def encode_faces():
         encodings = face_recognition.face_encodings(image, locations)
 
         # Сохраняем отладочное изображение (добавленная строка)
-        debug_path = save_debug_image(image, locations, filename)
+        debug_path = save_debug_image(image, locations, original_path)
         logger.info(f"Debug image saved to: {debug_path}")
 
         logger.info(f"Encoding took {round(time.time() - start, 2)} seconds")

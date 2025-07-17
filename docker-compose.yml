@@ -35,6 +35,8 @@ services:
             - sail
         ports:
             - "5000:5000"                   # Открытый порт для REST API face_recognition
+        volumes:
+            - "/mnt/d/Fotos:/dfotos"
 
     laravel.test:
         build:

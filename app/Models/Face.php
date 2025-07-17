@@ -3,14 +3,19 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Face extends Model
 {
+    use SoftDeletes;
+
     protected $casts = [
         'encoding' => 'array',
     ];
 
     protected $fillable = [
+        'image_id',
+        'face_index',
         'name',
         'encoding',
     ];
