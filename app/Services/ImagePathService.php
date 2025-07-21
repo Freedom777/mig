@@ -2,11 +2,16 @@
 
 namespace App\Services;
 
+use App\Models\Image;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
 class ImagePathService
 {
+    public static function getDebugImagePath(Image $image) {
+        return Storage::disk($image->disk)->path($image->path . '/debug/' . $image->debug_filename);
+    }
+
     public static function getThumbnailSubdir(int $width, int $height): string
     {
         return Str::of(config('image.thumbnails.dir_format'))

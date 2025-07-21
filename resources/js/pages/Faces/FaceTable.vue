@@ -1,161 +1,258 @@
-<script setup>
-import axios from 'axios'
-import { ref, computed, onMounted } from 'vue'
-import { router } from '@inertiajs/vue3'
-import { usePage } from '@inertiajs/vue3'
+<script>
 
-const props = defineProps({
-    initialImageId: {
-        type: Number,
-        required: true,
+import AppLayout from '@/layouts/AppLayout.vue';
+// import { router } from '@inertiajs/vue3';
+import axios from 'axios';
+
+export default {
+    layout: AppLayout,
+    props: {
+        initialImageId: {
+            type: Number,
+            required: true,
+        },
     },
-})
+    data() {
+        return {
+            imageId: this.initialImageId,
+            isFullscreen: false,
+            faces: [],
+            prevImage: null,
+            nextImage: null,
+            isLoading: false,
+            noImagesLeft: false,
+        };
+    },
+    computed: {
+        imageUrl() {
+            return `/api/image/${this.imageId}.jpg`;
+        },
+    },
+    async mounted() {
+        if (!this.imageId) {
+            this.noImagesLeft = true;
+            return;
+        }
 
-const imageId = ref(props.initialImageId)
-const faces = ref([])
-const hasPrev = ref(false)
-const hasNext = ref(true)
-const isLoading = ref(false)
+        await this.loadFaces();
+        // await this.checkNavigation();
+    },
+    methods: {
+        async checkNavigation() {
+            const { data } = await axios.get(`/api/image/nearby?id=${this.imageId}`);
+            this.nextImage = data.next;
+            this.prevImage = data.prev;
+        },
+        async prevPhoto() {
+            if (!this.prevImage) {
+                this.noImagesLeft = true;
+                return;
+            }
+            this.imageId = this.prevImage.id;
+            await this.loadFaces();
+            await this.checkNavigation();
+        },
+        async nextPhoto() {
+            if (!this.nextImage) {
+                this.noImagesLeft = true;
+                return;
+            }
+            this.imageId = this.nextImage.id;
+            await this.loadFaces();
+            await this.checkNavigation();
+        },
+        async loadFaces() {
+            this.isLoading = true;
+            try {
+                const response = await axios.get(`/api/face/list?image_id=${this.imageId}`);
+                this.faces = response.data.map(face => ({
+                    ...face,
+                    saved: false,
+                }));
 
-const imageUrl = computed(() => `/api/image/${imageId.value}.jpg`)
+                // Проверка доступности после загрузки
+                await this.checkNavigation();
+                if (!this.prevImage && !this.nextImage && this.faces.length === 0) {
+                    this.noImagesLeft = true;
+                }
 
-onMounted(async () => {
-    await loadFaces()
-    await checkNavigation()
-})
+            } catch (error) {
+                console.error('Failed to load faces:', error);
+                this.faces = [];
+                this.noImagesLeft = true; // если загрузка не удалась
+            } finally {
+                this.isLoading = false;
+            }
+        },
+        async saveFace(index, status = null) {
+            const face = this.faces[index];
+            try {
+                await axios.post('/api/face/save', {
+                    image_id: this.imageId,
+                    face_index: index,
+                    name: (status !== 'ok') ? null : face.name,
+                    status: status,
+                }, {
+                    headers: {
+                        Accept: 'application/json',
+                    }
+                });
 
-async function checkNavigation() {
-    try {
-        const response = await axios.get(`/api/image/nearby?id=${imageId.value}`)
-        hasNext.value = response.data.hasNext
-        hasPrev.value = response.data.hasPrev
-    } catch (e) {
-        console.error('Navigation check failed', e)
-    }
-}
+                // Если статус изменился — обновим в таблице
+                if (status !== null && face.status !== status) {
+                    this.faces[index].status = status;
+                }
 
-async function loadFaces() {
-    isLoading.value = true
-    try {
-        const response = await axios.get(`/api/face/list?image_id=${imageId.value}`)
-        faces.value = response.data.map(face => ({
-            ...face,
-            saved: false,
-        }))
-    } catch (error) {
-        console.error('Failed to load faces:', error)
-        faces.value = []
-    } finally {
-        isLoading.value = false
-    }
-}
+                face.saved = true;
+                setTimeout(() => { face.saved = false; }, 3000);
+            } catch (error) {
+                console.error('Save failed:', error);
+            }
+        },
+        async completeImage() {
+            try {
+                await axios.post('/api/image/complete', {
+                    image_id: this.imageId,
+                }, {
+                    headers: {
+                        Accept: 'application/json',
+                    }
+                });
 
-async function prevPhoto() {
-    if (!hasPrev.value) return
-    imageId.value--
-    await loadFaces()
-    await checkNavigation()
-}
+                await this.nextPhoto();
+                if (!this.nextImage && !this.prevImage) {
+                    this.noImagesLeft = true;
+                }
+            } catch (error) {
+                console.error('Complete failed:', error);
+            }
+        },
+        async removeImage() {
+            try {
+                await axios.post('/api/image/remove', {
+                    image_id: this.imageId,
+                }, {
+                    headers: {
+                        Accept: 'application/json',
+                    }
+                });
 
-async function nextPhoto() {
-    if (!hasNext.value) return
-    imageId.value++
-    await loadFaces()
-    await checkNavigation()
-}
+                await this.nextPhoto();
+                if (!this.nextImage && !this.prevImage) {
+                    this.noImagesLeft = true;
+                }
+            } catch (error) {
+                console.error('Remove failed:', error);
+            }
+        },
 
-async function saveFace(index) {
-    const face = faces.value[index]
-    try {
-        await router.post('/api/face/save', {
-            image_id: imageId.value,
-            face_index: index,
-            name: face.name,
-        }, { preserveScroll: true })
 
-        face.saved = true
-        setTimeout(() => { face.saved = false }, 3000)
-    } catch (error) {
-        console.error('Save failed:', error)
-    }
-}
-
-async function removeFace(index) {
-    try {
-        await router.delete('/api/face/remove', {
-            data: {
-                image_id: imageId.value,
-                face_index: index,
-            },
-            preserveScroll: true,
-        })
-        faces.value.splice(index, 1)
-    } catch (error) {
-        console.error('Remove failed:', error)
-    }
-}
-
-function addFace() {
-    faces.value.push({
-        id: `temp-${Date.now()}-${Math.random()}`,
-        name: '',
-        saved: false,
-    })
-}
+        /*
+        async removeFace(index) {
+            try {
+                await axios.delete('/api/face/remove', {
+                    data: {
+                        image_id: this.imageId,
+                        face_index: index,
+                    },
+                    preserveScroll: true,
+                });
+                this.faces.splice(index, 1);
+            } catch (error) {
+                console.error('Remove failed:', error);
+            }
+        },
+        */
+        addFace() {
+            this.faces.push({
+                id: `temp-${Date.now()}-${Math.random()}`,
+                name: '',
+                saved: false,
+            });
+        },
+        toggleFullscreen() {
+            this.isFullscreen = !this.isFullscreen;
+        },
+    },
+};
 </script>
 
 <template>
     <div class="face-editor">
-        <!-- Навигация и фото -->
-        <div class="photo-navigation">
-            <button @click="prevPhoto" :disabled="!hasPrev || isLoading" class="nav-button">
-                ← Back <span v-if="isLoading">⌛</span>
-            </button>
+        <div v-if="noImagesLeft" class="no-photos">
+            No available photos to review.
+        </div>
 
-            <div class="photo-container">
-                <img v-if="!isLoading" :src="imageUrl" class="photo" />
-                <div v-else class="loading">Loading image...</div>
+        <template v-else>
+            <!-- Навигация и фото -->
+            <div class="photo-navigation">
+                <button @click="prevPhoto" :disabled="!prevImage || isLoading" class="nav-button">
+                    ← Back <span v-if="isLoading">⌛</span>
+                </button>
+
+                <div class="photo-container">
+                    <img
+                        v-if="!isLoading"
+                        :src="imageUrl"
+                        :class="{ fullscreen: isFullscreen }"
+                        class="photo"
+                        @click="toggleFullscreen"
+                    />
+
+                    <div v-else class="loading">Loading image...</div>
+                </div>
+
+                <button @click="nextPhoto" :disabled="!nextImage || isLoading" class="nav-button">
+                    Next → <span v-if="isLoading">⌛</span>
+                </button>
             </div>
 
-            <button @click="nextPhoto" :disabled="!hasNext || isLoading" class="nav-button">
-                Next → <span v-if="isLoading">⌛</span>
-            </button>
-        </div>
-
-        <!-- Таблица лиц или сообщение -->
-        <div v-if="faces.length > 0">
-            <table class="faces-table">
+            <!-- Таблица лиц -->
+            <table class="faces-table" v-if="faces.length > 0">
                 <thead>
-                <tr>
-                    <th>Index</th>
-                    <th>Name</th>
-                    <th>Actions</th>
-                    <th></th> <!-- Для статуса сохранения -->
-                </tr>
+                    <tr>
+                        <th>Index</th>
+                        <th>Status</th>
+                        <th>Name</th>
+                        <th></th>
+                        <th>Actions</th>
+                        <th></th>
+                    </tr>
                 </thead>
                 <tbody>
-                <tr v-for="(face, index) in faces" :key="face.id">
-                    <td>{{ index }}</td>
-                    <td>
-                        <input v-model="face.name" type="text" placeholder="Enter name" />
-                    </td>
-                    <td>
-                        <button @click="saveFace(index)" class="btn-save">Save</button>
-                        <button @click="removeFace(index)" class="btn-remove">Remove</button>
-                    </td>
-                    <td>
-                        <span v-if="face.saved" class="saved-message">Saved!</span>
-                    </td>
-                </tr>
+                    <tr v-for="(face, index) in faces" :key="face.id">
+                        <td>{{ index }}</td>
+                        <td>{{ face.status}}</td>
+                        <td>
+                            <input v-model="face.name" type="text" placeholder="Enter name" />
+                        </td>
+                        <td>
+                            <button @click="saveFace(index, 'ok')" class="btn-save">Save</button>
+                        </td>
+                        <td>
+                            <button @click="saveFace(index, 'not_face')" class="btn-remove">Not a face</button>
+                            <button @click="saveFace(index, 'unknown')" class="btn-remove">Unknown</button>
+                        </td>
+                        <td>
+                            <span v-if="face.saved" class="saved-message">Saved!</span>
+                        </td>
+                    </tr>
                 </tbody>
             </table>
-        </div>
-        <div v-else class="no-faces">
-            No faces detected in this image.
-        </div>
+            <div v-else class="no-faces">
+                No faces detected in this image.
+            </div>
 
-        <!-- Кнопка добавления всегда видна -->
-        <button @click="addFace" class="btn-add">Add Face</button>
+            <!-- Кнопка добавления всегда видна -->
+            <div style="padding-bottom: 20px;">
+                <button @click="addFace" class="btn-add">Add Face</button>
+            </div>
+            <div>
+                <!-- Кнопка "Complete" -->
+                <button @click="completeImage" class="btn-save">Complete</button>
+                <button @click="removeImage" class="btn-remove">Not photo</button>
+            </div>
+        </template>
     </div>
 </template>
 

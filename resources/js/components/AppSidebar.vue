@@ -15,8 +15,8 @@ const mainNavItems: NavItem[] = [
         icon: LayoutGrid,
     },
     {
-        title: 'Faces',
-        href: '/faces',
+        title: 'Images',
+        href: '/images',
         icon: Camera,
     },
 ];

@@ -9,6 +9,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class Image extends Model
 {
     const STATUS_PROCESS = 'process';
+
+    const STATUS_NOT_PHOTO = 'not_photo';
     const STATUS_OK = 'ok';
 
     protected $fillable = [
@@ -60,17 +62,23 @@ class Image extends Model
         return $this->belongsToMany(Face::class, 'rel_images_faces', 'image_id', 'face_id');
     }
 
-    public function previous()
+    public static function previous($id, $status = null)
     {
-        return static::where('id', '<', $this->id)
-            ->orderBy('id', 'desc')
-            ->first();
+        $image = static::where('id', '<', $id)
+            ->orderBy('id', 'asc');
+        if ($status) {
+            $image = $image->where('status', $status);
+        }
+        return $image->first();
     }
 
-    public function next()
+    public static function next($id, $status = null)
     {
-        return static::where('id', '>', $this->id)
-            ->orderBy('id', 'asc')
-            ->first();
+        $image = static::where('id', '>', $id)
+            ->orderBy('id', 'asc');
+        if ($status) {
+            $image = $image->where('status', $status);
+        }
+        return $image->first();
     }
 }

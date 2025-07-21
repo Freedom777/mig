@@ -14,8 +14,8 @@ class ApiImageController extends Controller
     {
         $id = (int) $request->input('id');
 
-        $prev = Image::whereKey($id - 1)->first();
-        $next = Image::whereKey($id + 1)->first();
+        $prev = Image::previous($id, Image::STATUS_PROCESS);
+        $next = Image::next($id, Image::STATUS_PROCESS);
         $hasPrev = false;
         $hasNext = false;
 
@@ -27,8 +27,18 @@ class ApiImageController extends Controller
         }
 
         return response()->json([
+            'prev' => $prev ? [
+                'id' => $prev->id,
+                'path' => Storage::disk($prev->disk)->exists($prev->path . '/debug/' . $prev->debug_filename),
+            ] : null,
+            'next' => $next ? [
+                'id' => $next->id,
+                'path' => Storage::disk($next->disk)->exists($next->path . '/debug/' . $next->debug_filename),
+            ] : null,
+            /*
             'hasPrev' => $hasPrev,
             'hasNext' => $hasNext,
+            */
         ]);
     }
 
@@ -42,4 +52,34 @@ class ApiImageController extends Controller
         }
         return response()->file(Storage::disk($image->disk)->path($debug_path));
     }
+
+    /*public function getData(Request $request)
+    {
+        $image = Image::find((int) $request->input('image_id'));
+    }*/
+
+    public function complete(Request $request){
+        $image = Image::find((int) $request->input('image_id'));
+        if ($image) {
+            $image->status = Image::STATUS_OK;
+            $image->save();
+        }
+
+        return response()->json([
+            'status' => Image::STATUS_OK
+        ]);
+    }
+
+    public function remove(Request $request){
+        $image = Image::find((int) $request->input('image_id'));
+        if ($image) {
+            $image->status = Image::STATUS_NOT_PHOTO;
+            $image->save();
+        }
+
+        return response()->json([
+            'status' => Image::STATUS_OK
+        ]);
+    }
+
 }

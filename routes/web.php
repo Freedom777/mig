@@ -1,6 +1,6 @@
 <?php
 
-use App\Http\Controllers\FaceController;
+use App\Http\Controllers\ImageController;
 use App\Http\Controllers\WelcomeController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
@@ -17,7 +17,7 @@ Route::get('dashboard', function () {
     return Inertia::render('Dashboard');
 })->middleware(['auth', 'verified'])->name('dashboard');
 
-Route::get('/faces', [FaceController::class, 'index'])->name('faces.index');
+Route::get('/images', [ImageController::class, 'index'])->middleware(['auth', 'verified'])->name('images.index');
 
 /*Route::get('/faces', function () {
     return Inertia::render('Faces/FaceTable');

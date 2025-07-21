@@ -7,12 +7,4 @@ use Inertia\Inertia;
 
 class FaceController extends Controller
 {
-    public function index()
-    {
-        $initialImage = Image::orderBy('id')->first();
-
-        return Inertia::render('Faces/FaceTable', [
-            'initialImageId' => $initialImage?->id ?? null,
-        ]);
-    }
 }
