@@ -31,8 +31,9 @@ Route::controller(ApiFaceController::class)->prefix('face')->group(function () {
 });
 
 Route::controller(ApiImageController::class)->prefix('image')->group(function () {
-    Route::get('nearby', 'nearby');
+    Route::get('{id}/nearby', 'nearby');
     Route::get('{id}.jpg', 'show');
-    Route::post('complete', 'complete');
-    Route::post('remove', 'remove');
+    Route::get('{id}/remove', 'remove');
+
+    Route::patch('{id}/status', 'status');
 });

@@ -11,6 +11,8 @@ class Image extends Model
     const STATUS_PROCESS = 'process';
 
     const STATUS_NOT_PHOTO = 'not_photo';
+
+    const STATUS_RECHECK = 'recheck'; // When on photo face exists, but not recognized
     const STATUS_OK = 'ok';
 
     protected $fillable = [

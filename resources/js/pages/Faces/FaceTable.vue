@@ -27,6 +27,9 @@ export default {
         imageUrl() {
             return `/api/image/${this.imageId}.jpg`;
         },
+        canComplete() {
+            return this.faces.every(face => face.status !== 'process');
+        },
     },
     async mounted() {
         if (!this.imageId) {
@@ -39,7 +42,7 @@ export default {
     },
     methods: {
         async checkNavigation() {
-            const { data } = await axios.get(`/api/image/nearby?id=${this.imageId}`);
+            const { data } = await axios.get(`/api/image/${this.imageId}/nearby`);
             this.nextImage = data.next;
             this.prevImage = data.prev;
         },
@@ -111,8 +114,8 @@ export default {
         },
         async completeImage() {
             try {
-                await axios.post('/api/image/complete', {
-                    image_id: this.imageId,
+                await axios.patch(`/api/image/${this.imageId}/status`, {
+                    status: 'ok',
                 }, {
                     headers: {
                         Accept: 'application/json',
@@ -127,15 +130,27 @@ export default {
                 console.error('Complete failed:', error);
             }
         },
-        async removeImage() {
+        async recheckImage() {
             try {
-                await axios.post('/api/image/remove', {
-                    image_id: this.imageId,
+                await axios.patch(`/api/image/${this.imageId}/status`, {
+                    status: 'recheck',
                 }, {
                     headers: {
                         Accept: 'application/json',
                     }
                 });
+
+                await this.nextPhoto();
+                if (!this.nextImage && !this.prevImage) {
+                    this.noImagesLeft = true;
+                }
+            } catch (error) {
+                console.error('Recheck failed:', error);
+            }
+        },
+        async removeImage() {
+            try {
+                await axios.get(`/api/image/${this.imageId}/remove`);
 
                 await this.nextPhoto();
                 if (!this.nextImage && !this.prevImage) {
@@ -249,7 +264,17 @@ export default {
             </div>
             <div>
                 <!-- Кнопка "Complete" -->
-                <button @click="completeImage" class="btn-save">Complete</button>
+                <div class="complete-wrapper" :title="!canComplete ? 'Please mark all faces before completing' : ''">
+                    <button
+                        @click="completeImage"
+                        class="btn-complete"
+                        :class="{ 'btn-disabled': !canComplete }"
+                        :disabled="!canComplete"
+                    >
+                        Complete
+                    </button>
+                </div>
+                <button @click="recheckImage" class="btn-remove">Recheck</button>
                 <button @click="removeImage" class="btn-remove">Not photo</button>
             </div>
         </template>

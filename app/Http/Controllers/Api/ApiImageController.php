@@ -3,28 +3,26 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\Face;
 use App\Models\Image;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Symfony\Component\HttpFoundation\Response;
 use Illuminate\Support\Facades\Storage;
 
 class ApiImageController extends Controller
 {
-    public function nearby(Request $request)
+    /** @noinspection PhpUnused */
+    /**
+     * Get nearby images with status = Image::STATUS_PROCESS in database
+     * @used-by \App\Providers\RouteServiceProvider
+     * @route GET /api/image/{id}/nearby
+     */
+    public function nearby($id) : JsonResponse
     {
-        $id = (int) $request->input('id');
-
         $prev = Image::previous($id, Image::STATUS_PROCESS);
         $next = Image::next($id, Image::STATUS_PROCESS);
-        $hasPrev = false;
-        $hasNext = false;
-
-        if ($prev) {
-            $hasPrev = Storage::disk($prev->disk)->exists($prev->path . '/debug/' . $prev->debug_filename);
-        }
-        if ($next) {
-            $hasNext = Storage::disk($next->disk)->exists($next->path . '/debug/' . $next->debug_filename);
-        }
 
         return response()->json([
             'prev' => $prev ? [
@@ -35,14 +33,10 @@ class ApiImageController extends Controller
                 'id' => $next->id,
                 'path' => Storage::disk($next->disk)->exists($next->path . '/debug/' . $next->debug_filename),
             ] : null,
-            /*
-            'hasPrev' => $hasPrev,
-            'hasNext' => $hasNext,
-            */
         ]);
     }
 
-    public function show($id)
+    public function show($id) : BinaryFileResponse | JsonResponse
     {
         $image = Image::findOrFail($id);
         $debug_path = $image->path . '/debug/' . $image->debug_filename;
@@ -53,14 +47,31 @@ class ApiImageController extends Controller
         return response()->file(Storage::disk($image->disk)->path($debug_path));
     }
 
+    public function status($id, Request $request) : JsonResponse {
+        $image = Image::findOrFail($id);
+
+        $status = $request->input('status');
+        $image->status = $status;
+        $image->save();
+
+        return response()->json([
+            'status' => Image::STATUS_OK
+        ]);
+    }
+
     /*public function getData(Request $request)
     {
         $image = Image::find((int) $request->input('image_id'));
     }*/
 
-    public function complete(Request $request){
-        $image = Image::find((int) $request->input('image_id'));
+    public function complete($id) : JsonResponse {
+        $image = Image::find($id);
         if ($image) {
+            // Maybe move to event, or leave as it is in frontend, when face is in process and image set complete
+            /*Face::where('image_id', $image->id)->where('status', Face::STATUS_PROCESS)
+                ->update(['status' => Face::STATUS_OK, 'updated_at' => now()]);*/
+
+
             $image->status = Image::STATUS_OK;
             $image->save();
         }
@@ -70,8 +81,8 @@ class ApiImageController extends Controller
         ]);
     }
 
-    public function remove(Request $request){
-        $image = Image::find((int) $request->input('image_id'));
+    public function remove($id) : JsonResponse {
+        $image = Image::findOrFail($id);
         if ($image) {
             $image->status = Image::STATUS_NOT_PHOTO;
             $image->save();

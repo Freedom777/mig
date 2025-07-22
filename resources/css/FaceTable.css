@@ -146,3 +146,25 @@ button {
 .photo:not(.fullscreen) {
     cursor: zoom-in;
 }
+
+.btn-complete {
+    background-color: #4CAF50;
+    color: white;
+    padding: 10px 15px;
+    border: none;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+    border-radius: 4px;
+}
+
+.btn-disabled {
+    background-color: #ccc !important;
+    color: #666 !important;
+    cursor: not-allowed;
+}
+
+.complete-wrapper {
+    display: inline-block;
+    margin-top: 10px;
+}
+
