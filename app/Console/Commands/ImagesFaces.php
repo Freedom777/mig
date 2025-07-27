@@ -43,15 +43,4 @@ class ImagesFaces extends Command
             $this->error('Failed to send to API (image ID: ' . $id . '): ' . $e->getMessage());
         }
     }
-
-    /*
-     $response = Http::attach(
-    'image', file_get_contents($pathToImage), 'image.jpg'
-)->post('http://face-api:5000/detect');
-
-dd($response->json());
-
-     */
-
-
 }

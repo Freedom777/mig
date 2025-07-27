@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\Models\Face;
 use App\Models\Image;
+use App\Services\ImagePathService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
@@ -38,13 +39,15 @@ class FaceProcessJob implements ShouldQueue
     {
         try {
             $image = Image::find($this->taskData['image_id']);
-            $imagePath = Storage::disk($image->disk)->path($image->path . '/' . $image->filename);
+            $imagePath = ImagePathService::getImagePath($image);
 
             // Отправка изображения на Python API
             $response = Http::attach(
                 'image', file_get_contents($imagePath), $image->filename
             )->post(config('app.face_api_url') . '/encode', [
-                'original_path' => $imagePath
+                'original_disk' => $image->disk,
+                'original_path' => $imagePath,
+                'image_debug_subdir' => ImagePathService::getImageDebugSubdir()
             ]);
 
             if (!$response->successful()) {
@@ -86,8 +89,9 @@ class FaceProcessJob implements ShouldQueue
                 $faces[] = $newFace;
             }
 
-            // $image->faces()->sync($facesAttach);
-            $image->debug_filename = basename($response->json()['debug_image_path']);
+            $image->debug_filename = is_null($debugPath = $response->json()['debug_image_path'])
+                ? null
+                : basename($debugPath);
             $image->faces_checked = 1;
             $image->save();
         } catch (\Exception $e) {

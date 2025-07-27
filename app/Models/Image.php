@@ -61,7 +61,7 @@ class Image extends Model
 
     public function faces()
     {
-        return $this->belongsToMany(Face::class, 'rel_images_faces', 'image_id', 'face_id');
+        return $this->hasMany(Face::class, 'image_id', 'id');
     }
 
     public static function previous($id, $status = null)

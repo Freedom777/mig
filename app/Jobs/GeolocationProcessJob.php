@@ -15,6 +15,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use MatanYadaev\EloquentSpatial\Objects\Point;
 
 class GeolocationProcessJob implements ShouldQueue
 {
@@ -54,30 +55,30 @@ class GeolocationProcessJob implements ShouldQueue
                     throw new \Exception('Failed to process GPS location from metadata: ' . json_encode($metadata));
                 }
 
-                $point = ImageGeolocationPoint::whereRaw('ST_X(coordinates) = ? AND ST_Y(coordinates) = ?', [$longitude, $latitude])->first();
+                $pointLatLon = new Point($latitude, $longitude);
+                $point = ImageGeolocationPoint::where('coordinates', $pointLatLon)->first();
                 if (!$point) {
-                    $addressId = $this->getAddressId($longitude, $latitude);
+                    $addressId = ImageGeolocationAddress::whereContains('osm_area', $point)->value('id');
                     if (!$addressId) {
-                        throw new \Exception('Get address from URL process failed.');
+                        $addressId = $this->getAddressId($latitude, $longitude);
+                        if (!$addressId) {
+                            throw new \Exception('Get address from URL process failed.');
+                        }
                     }
 
-                    $pointId = DB::table((new ImageGeolocationPoint())->getTable())
-                        ->insertGetId([
-                            'image_geolocation_address_id' => $addressId,
-                            'coordinates' => DB::raw('ST_GeomFromText(\'POINT(' . $longitude . ' ' . $latitude . ')\', 4326)'),
-                            // 'coordinates' => DB::raw('POINT(' . $longitude . ', ' . $latitude . ')'),
-                        ]);
-                } else {
-                    $pointId = $point->id;
+                    $point = new ImageGeolocationPoint();
+                    $point->image_geolocation_address_id = $addressId;
+                    $point->coordinates = $pointLatLon;
+                    $point->save();
                 }
-                Image::where('id', $this->taskData['image_id'])->update(['image_geolocation_point_id' => $pointId]);
+                Image::where('id', $this->taskData['image_id'])->update(['image_geolocation_point_id' => $point->id]);
             } catch (\Exception $e) {
                 throw new \Exception('Failed to process geolocation: ' . $e->getMessage());
             }
         });
     }
 
-    private function getAddressId($longitude, $latitude) {
+    private function getAddressId(float $latitude, float $longitude) : false|int {
         $locUrl = Str::of(env('GEOLOCATION_URL'))
             ->replace('{latitude}', $latitude)
             ->replace('{longitude}', $longitude)
@@ -97,16 +98,12 @@ class GeolocationProcessJob implements ShouldQueue
             return false;
         }
 
-        if (isset($addressAr['place_id'])) {
-            $address = ImageGeolocationAddress::where('address->place_id', $addressAr['place_id'])->first();
-            if ($address) {
-                return $address->id;
-            }
-        }
-
         $locAddress = new ImageGeolocationAddress();
+        $locAddress->osm_id = $addressAr['osm_id'];
+        $locAddress->osm_area = $addressAr['boundingbox'];
         $locAddress->address = $addressAr;
         $locAddress->save();
+
         return $locAddress->id;
     }
 }

@@ -16,9 +16,8 @@ class ApiFaceController extends Controller
         $imageId = $request->input('image_id');
 
         $faces = Face::where('image_id', $imageId)
-            // ->where('status', Face::STATUS_PROCESS)
             ->orderBy('face_index')
-            ->get(['id'/*, 'image_id'*/, 'face_index', 'name', 'status']);
+            ->get(['id', 'face_index', 'name', 'status']);
 
         return response()->json($faces);
     }

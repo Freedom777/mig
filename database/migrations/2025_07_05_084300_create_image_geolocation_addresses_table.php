@@ -13,6 +13,8 @@ return new class extends Migration
     {
         Schema::create('image_geolocation_addresses', function (Blueprint $table) {
             $table->id();
+            $table->bigInteger('osm_id');
+            $table->geography('osm_area', subtype: 'polygon', srid: 4326)->nullable();
             $table->json('address')->nullable();
         });
     }

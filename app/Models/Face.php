@@ -26,8 +26,20 @@ class Face extends Model
         'status',
     ];
 
-    public function images()
+    public function image()
     {
-        return $this->belongsToMany(Image::class, 'rel_images_faces', 'face_id', 'image_id');
+        return $this->belongsTo(Image::class, 'image_id', 'id');
+    }
+
+    // Получить всех детей данной записи
+    public function children()
+    {
+        return $this->hasMany(Face::class, 'parent_id');
+    }
+
+    // Получить родителя данной записи
+    public function parent()
+    {
+        return $this->belongsTo(Face::class, 'parent_id');
     }
 }

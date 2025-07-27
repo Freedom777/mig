@@ -9,7 +9,15 @@ use Illuminate\Support\Str;
 class ImagePathService
 {
     public static function getDebugImagePath(Image $image) {
-        return Storage::disk($image->disk)->path($image->path . '/debug/' . $image->debug_filename);
+        return Storage::disk($image->disk)->path($image->path . '/' . self::getImageDebugSubdir() . '/' . $image->debug_filename);
+    }
+
+    public static function getImageDebugSubdir() {
+        return env('IMAGE_DEBUG_SUBDIR');
+    }
+
+    public static function getImagePath(Image $image) {
+        return Storage::disk($image->disk)->path($image->path . '/' . $image->filename);
     }
 
     public static function getThumbnailSubdir(int $width, int $height): string
@@ -31,7 +39,9 @@ class ImagePathService
 
         return pathinfo($filename, PATHINFO_FILENAME) . $postfix . '.' . $extension;
     }
-
+///////////////////////////////////////////
+///
+    /*
     public static function getStorageBasePath(bool $isThumbnail = false): string
     {
         return $isThumbnail ? env('THUMBNAIL_STORAGE_PATH') : env('IMAGE_STORAGE_PATH');
@@ -77,4 +87,5 @@ class ImagePathService
 
         return Storage::disk(env('IMAGE_STORAGE_DISK'))->url($path);
     }
+    */
 }

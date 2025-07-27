@@ -4,6 +4,8 @@ namespace App\Providers;
 
 use App\Services\ApiClient;
 use Illuminate\Support\ServiceProvider;
+use MatanYadaev\EloquentSpatial\EloquentSpatial;
+use MatanYadaev\EloquentSpatial\Enums\Srid;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -22,6 +24,7 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        //
+        // Set default SRID for Geolocations
+        EloquentSpatial::setDefaultSrid(Srid::WGS84);
     }
 }
