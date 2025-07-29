@@ -6,9 +6,12 @@ use App\Http\Controllers\Controller;
 use App\Jobs\MetadataProcessJob;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
+use App\Traits\QueueAbleTrait;
 
 class ApiMetadataProcessController extends Controller
 {
+    use QueueAbleTrait;
+
     public function process(Request $request)
     {
         try {
@@ -26,14 +29,7 @@ class ApiMetadataProcessController extends Controller
                 'source_filename.required' => 'Source filename is required',
             ]);
 
-            MetadataProcessJob::dispatch($data)->onQueue(env('QUEUE_METADATAS'));
-
-            return response()->json([
-                'status' => 'queued',
-                'message' => 'Metadata added to processing queue',
-                'data' => $data // Опционально - возвращаем принятые данные
-            ]);
-
+            return $this->pushToQueue(MetadataProcessJob::class, env('QUEUE_METADATAS'), $data);
         } catch (ValidationException $e) {
             return response()->json([
                 'status' => 'error',

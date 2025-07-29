@@ -6,9 +6,12 @@ use App\Http\Controllers\Controller;
 use App\Jobs\GeolocationProcessJob;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
+use App\Traits\QueueAbleTrait;
 
 class ApiGeolocationProcessController extends Controller
 {
+    use QueueAbleTrait;
+
     public function process(Request $request)
     {
         try {
@@ -22,14 +25,7 @@ class ApiGeolocationProcessController extends Controller
                 'metadata.required' => 'Metadata is required',
             ]);
 
-            GeolocationProcessJob::dispatch($data)->onQueue(env('QUEUE_GEOLOCATIONS'));
-
-            return response()->json([
-                'status' => 'queued',
-                'message' => 'Geolocation added to processing queue',
-                'data' => $data // Опционально - возвращаем принятые данные
-            ]);
-
+            return $this->pushToQueue(GeolocationProcessJob::class, env('QUEUE_GEOLOCATIONS'), $data);
         } catch (ValidationException $e) {
             return response()->json([
                 'status' => 'error',

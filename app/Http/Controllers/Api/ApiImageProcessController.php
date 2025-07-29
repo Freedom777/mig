@@ -6,9 +6,12 @@ use App\Http\Controllers\Controller;
 use App\Jobs\ImageProcessJob;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
+use App\Traits\QueueAbleTrait;
 
 class ApiImageProcessController extends Controller
 {
+    use QueueAbleTrait;
+
     public function process(Request $request)
     {
         try {
@@ -22,6 +25,7 @@ class ApiImageProcessController extends Controller
                 'hash' => ['required', 'string', 'size:32', 'regex:/^[a-f0-9]{32}$/i'],
                 'created_at_file' => 'required|date',
                 'updated_at_file' => 'required|date',
+                'parent_id' => 'integer|exists:images,id',
             ], [
                 'source_disk.required' => 'Source disk is required',
                 'source_path.required' => 'Source path is required',
@@ -42,16 +46,11 @@ class ApiImageProcessController extends Controller
                 'created_at_file.date' => 'Invalid creation date format',
                 'updated_at_file.required' => 'Modification date is required',
                 'updated_at_file.date' => 'Invalid modification date format',
+                'parent_id.integer' => 'Duplicate with ID must be an integer',
+                'parent_id.exists' => 'Duplicate with ID provided not found in database.',
             ]);
 
-            ImageProcessJob::dispatch($data)->onQueue(env('QUEUE_IMAGES'));
-
-            return response()->json([
-                'status' => 'queued',
-                'message' => 'Image added to processing queue',
-                'data' => $data // Опционально - возвращаем принятые данные
-            ]);
-
+            return $this->pushToQueue(ImageProcessJob::class, env('QUEUE_IMAGES'), $data);
         } catch (ValidationException $e) {
             return response()->json([
                 'status' => 'error',

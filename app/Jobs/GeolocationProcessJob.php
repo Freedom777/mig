@@ -5,6 +5,7 @@ namespace App\Jobs;
 use App\Models\Image;
 use App\Models\ImageGeolocationAddress;
 use App\Models\ImageGeolocationPoint;
+use App\Traits\QueueAbleTrait;
 use Illuminate\Bus\Queueable;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Queue\InteractsWithQueue;
@@ -19,7 +20,7 @@ use MatanYadaev\EloquentSpatial\Objects\Point;
 
 class GeolocationProcessJob implements ShouldQueue
 {
-    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
+    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels, QueueAbleTrait;
 
     protected array $taskData;
 
@@ -74,6 +75,8 @@ class GeolocationProcessJob implements ShouldQueue
                 Image::where('id', $this->taskData['image_id'])->update(['image_geolocation_point_id' => $point->id]);
             } catch (\Exception $e) {
                 throw new \Exception('Failed to process geolocation: ' . $e->getMessage());
+            } finally {
+                $this->removeFromQueue(self::class, $this->taskData);
             }
         });
     }

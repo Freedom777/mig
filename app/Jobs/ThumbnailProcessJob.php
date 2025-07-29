@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Models\Image;
+use App\Traits\QueueAbleTrait;
 use Illuminate\Bus\Queueable;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Queue\SerializesModels;
@@ -16,7 +17,7 @@ use Illuminate\Support\Facades\Log;
 
 class ThumbnailProcessJob implements ShouldQueue
 {
-    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
+    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels, QueueAbleTrait;
 
     protected $taskData;
 
@@ -67,6 +68,8 @@ class ThumbnailProcessJob implements ShouldQueue
 
         } catch (\Exception $e) {
             Log::error('Failed to process thumbnail: ' . $e->getMessage());
+        } finally {
+            $this->removeFromQueue(self::class, $this->taskData);
         }
     }
 }

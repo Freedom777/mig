@@ -16,6 +16,7 @@ class Image extends Model
     const STATUS_OK = 'ok';
 
     protected $fillable = [
+        'parent_id',
         'image_geolocation_point_id',
 
         'disk',
@@ -66,7 +67,7 @@ class Image extends Model
 
     public static function previous($id, $status = null)
     {
-        $image = static::where('id', '<', $id)
+        $image = static::whereNull('parent_id')->where('id', '<', $id)
             ->orderBy('id', 'asc');
         if ($status) {
             $image = $image->where('status', $status);
@@ -76,11 +77,22 @@ class Image extends Model
 
     public static function next($id, $status = null)
     {
-        $image = static::where('id', '>', $id)
+        $image = static::whereNull('parent_id')->where('id', '>', $id)
             ->orderBy('id', 'asc');
         if ($status) {
             $image = $image->where('status', $status);
         }
         return $image->first();
     }
+
+    public function children()
+    {
+        return $this->hasMany(Image::class, 'parent_id');
+    }
+
+    public function parent()
+    {
+        return $this->belongsTo(Image::class, 'parent_id');
+    }
+
 }

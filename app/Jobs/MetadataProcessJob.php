@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Models\Image;
+use App\Traits\QueueAbleTrait;
 use Illuminate\Bus\Queueable;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Queue\InteractsWithQueue;
@@ -14,7 +15,7 @@ use Symfony\Component\Process\Process;
 
 class MetadataProcessJob implements ShouldQueue
 {
-    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
+    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels, QueueAbleTrait;
 
     protected array $taskData;
 
@@ -57,7 +58,8 @@ class MetadataProcessJob implements ShouldQueue
             }
         } catch (\Exception $e) {
             Log::error('Failed to process metadata from image ' . $sourcePath . ': ' . $e->getMessage());
+        } finally {
+            $this->removeFromQueue(self::class, $this->taskData);
         }
-
     }
 }

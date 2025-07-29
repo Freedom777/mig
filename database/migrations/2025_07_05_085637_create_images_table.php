@@ -11,6 +11,9 @@ return new class extends Migration {
     {
         Schema::create('images', function (Blueprint $table) {
             $table->id();
+            $table->unsignedBigInteger('parent_id')->nullable(); // nullable for updating afterward
+            // ALTER TABLE `images` ADD `parent_id` BIGINT UNSIGNED NULL DEFAULT NULL AFTER `id`, ADD INDEX (`parent_id`);
+
             $table->unsignedBigInteger('image_geolocation_point_id')->nullable();
 
             $table->string('disk')->nullable();

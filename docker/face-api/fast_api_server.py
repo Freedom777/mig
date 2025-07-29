@@ -98,7 +98,7 @@ async def encode_faces(
         img_orig.verify()
         img_orig = Image.open(BytesIO(contents))
 
-        logger.info(f"Processing image: {filename}, format: {img_orig.format}, mode: {img_orig.mode}, size: {img_orig.size}")
+        logger.info(f"Processing image: {original_path}/{filename}, format: {img_orig.format}, mode: {img_orig.mode}, size: {img_orig.size}")
         img = resize_image_if_needed(img_orig)
         image_np = image_to_np_array(img)
 
@@ -111,20 +111,25 @@ async def encode_faces(
 
         if not locations:
             image_np = image_to_np_array(img_orig)
+
             if image_np is False:
                 return JSONResponse(status_code=400, content={'error': 'Image must be 3-channel RGB'})
-            locations = face_recognition.face_locations(image_np, model='hog')
-            logger.info(f"HOG model fallback found {len(locations)} faces at: {locations}")
+            locations = face_recognition.face_locations(image_np, model='cnn')
+            logger.info(f"CNN model fallback (original image) found {len(locations)} faces at: {locations}")
+
+            if not locations:
+                locations = face_recognition.face_locations(image_np, model='hog')
+                logger.info(f"HOG model fallback (original image) found {len(locations)} faces at: {locations}")
 
         encodings = face_recognition.face_encodings(image_np, locations)
         logger.info(f"Got {len(encodings)} encodings")
         for idx, e in enumerate(encodings):
             logger.info(f"Encoding {idx} shape: {e.shape}, first values: {e[:5].tolist()}")
 
-        debug_path = None
-        if locations:
-            debug_path = save_debug_image(image_np, locations, original_disk, original_path, image_debug_subdir)
-            logger.info(f"Debug image saved to: {debug_path}")
+        # debug_path = None
+        # if locations:
+        debug_path = save_debug_image(image_np, locations, original_disk, original_path, image_debug_subdir)
+        logger.info(f"Debug image saved to: {debug_path}")
 
         logger.info(f"Encoding took {round(time.time() - start, 2)} seconds")
         return JSONResponse(content={

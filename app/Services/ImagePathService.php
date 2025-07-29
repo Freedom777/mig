@@ -8,8 +8,11 @@ use Illuminate\Support\Str;
 
 class ImagePathService
 {
-    public static function getDebugImagePath(Image $image) {
-        return Storage::disk($image->disk)->path($image->path . '/' . self::getImageDebugSubdir() . '/' . $image->debug_filename);
+    public static function getDebugImagePath(Image $image) : ?string {
+        if ($image->debug_filename) {
+            return Storage::disk($image->disk)->path($image->path . '/' . self::getImageDebugSubdir() . '/' . $image->debug_filename);
+        }
+        return null;
     }
 
     public static function getImageDebugSubdir() {

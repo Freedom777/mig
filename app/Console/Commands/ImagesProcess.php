@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Models\Image;
 use App\Services\ApiClient;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Storage;
@@ -38,13 +39,6 @@ class ImagesProcess extends Command
         $this->processDirectory($diskLabel, $source);
         $this->info('Image processing completed');
         return 0;
-
-        // Запускаем команды для дополнительной обработки
-        /*$this->call('images:extract-metadata', [
-            '--path' => storage_path('app/' . env('IMAGE_STORAGE_DISK') . '/' . $targetImagesDir)
-        ]);*/
-
-        // $this->call('images:generate-thumbnails');
     }
 
     protected function processDirectory(string $diskLabel, string $source)
@@ -80,30 +74,39 @@ class ImagesProcess extends Command
     private function processImage(string $diskLabel, string $sourcePath, string $filename)
     {
         $disk = Storage::disk($diskLabel);
-        $file = $disk->path($sourcePath) . '/' . $filename;
-        $imagedata = getimagesize($file);
+        $filePath = $disk->path($sourcePath) . '/' . $filename;
 
+        $md5 = md5_file($filePath);
+
+        $imagedata = getimagesize($filePath);
+
+        // Проверяем, есть ли уже такое изображение в базе
+        $duplicateId = Image::where('hash', $md5)->value('id');
+
+        $requestData = [
+            'parent' => $duplicateId,
+            'source_disk' => $diskLabel,
+            'source_path' => $sourcePath,
+            'source_filename' => $filename,
+            'width' => $imagedata[0],
+            'height' => $imagedata[1],
+            'size' => filesize($filePath),
+            'hash' => $md5,
+            'created_at_file' => date('Y-m-d H:i:s', filectime($filePath)),
+            'updated_at_file' => date('Y-m-d H:i:s', filemtime($filePath)),
+        ];
+
+        $diskPath = $diskLabel . '://' . $sourcePath . '/' . $filename;
         try {
-            $requestData = [
-                'source_disk' => $diskLabel,
-                'source_path' => $sourcePath,
-                'source_filename' => $filename,
-                'width' => $imagedata[0],
-                'height' => $imagedata[1],
-                'size' => filesize($file),
-                'hash' => md5_file($file),
-                'created_at_file' => date('Y-m-d H:i:s', filectime($file)),
-                'updated_at_file' => date('Y-m-d H:i:s', filemtime($file)),
-            ];
             $response = $this->apiClient->imageProcess($requestData);
 
             if ($response->successful()) {
-                $this->info('Task queued: ' . $diskLabel . '://' . $sourcePath . '/' . $filename);
+                $this->info('Task queued: ' . $diskPath);
             } else {
-                $this->error('API error (' . $diskLabel . '://' . $sourcePath . '/' . $filename . '): ' . $response->body());
+                $this->error('API error (' . $diskPath . '): ' . $response->body());
             }
         } catch (\Exception $e) {
-            $this->error('Failed to send to API (' . $diskLabel . '://' . $sourcePath . '/' . $filename . '): ' . $e->getMessage());
+            $this->error('Failed to send to API (' . $diskPath . '): ' . $e->getMessage());
         }
     }
 }

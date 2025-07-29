@@ -31,13 +31,11 @@ class Face extends Model
         return $this->belongsTo(Image::class, 'image_id', 'id');
     }
 
-    // Получить всех детей данной записи
     public function children()
     {
         return $this->hasMany(Face::class, 'parent_id');
     }
 
-    // Получить родителя данной записи
     public function parent()
     {
         return $this->belongsTo(Face::class, 'parent_id');

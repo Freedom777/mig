@@ -6,9 +6,12 @@ use App\Http\Controllers\Controller;
 use App\Jobs\ThumbnailProcessJob;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
+use App\Traits\QueueAbleTrait;
 
 class ApiThumbnailProcessController extends Controller
 {
+    use QueueAbleTrait;
+
     public function process(Request $request)
     {
         try {
@@ -36,14 +39,7 @@ class ApiThumbnailProcessController extends Controller
                 'thumbnail_height.min' => 'Thumbnail height must be at least 1 byte',
             ]);
 
-            ThumbnailProcessJob::dispatch($data)->onQueue(env('QUEUE_THUMBNAILS'));
-
-            return response()->json([
-                'status' => 'queued',
-                'message' => 'Thumbnail added to processing queue',
-                'data' => $data // Опционально - возвращаем принятые данные
-            ]);
-
+            return $this->pushToQueue(ThumbnailProcessJob::class, env('QUEUE_THUMBNAILS'), $data);
         } catch (ValidationException $e) {
             return response()->json([
                 'status' => 'error',

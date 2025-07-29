@@ -6,9 +6,12 @@ use App\Http\Controllers\Controller;
 use App\Jobs\FaceProcessJob;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
+use App\Traits\QueueAbleTrait;
 
 class ApiFaceProcessController extends Controller
 {
+    use QueueAbleTrait;
+
     public function process(Request $request)
     {
         try {
@@ -20,14 +23,7 @@ class ApiFaceProcessController extends Controller
                 'image_id.min' => 'Image ID must be at least 1 byte',
             ]);
 
-            FaceProcessJob::dispatch($data)->onQueue(env('QUEUE_FACES'));
-
-            return response()->json([
-                'status' => 'queued',
-                'message' => 'Face added to processing queue',
-                'data' => $data // Опционально - возвращаем принятые данные
-            ]);
-
+            return $this->pushToQueue(FaceProcessJob::class, env('QUEUE_FACES'), $data);
         } catch (ValidationException $e) {
             return response()->json([
                 'status' => 'error',

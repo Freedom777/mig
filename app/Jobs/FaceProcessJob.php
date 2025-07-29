@@ -5,6 +5,7 @@ namespace App\Jobs;
 use App\Models\Face;
 use App\Models\Image;
 use App\Services\ImagePathService;
+use App\Traits\QueueAbleTrait;
 use Illuminate\Bus\Queueable;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
@@ -16,7 +17,7 @@ use Illuminate\Support\Facades\Log;
 
 class FaceProcessJob implements ShouldQueue
 {
-    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
+    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels, QueueAbleTrait;
 
     protected $taskData;
 
@@ -96,6 +97,8 @@ class FaceProcessJob implements ShouldQueue
             $image->save();
         } catch (\Exception $e) {
             Log::error('Failed to process face: ' . $e->getMessage());
+        } finally {
+            $this->removeFromQueue(self::class, $this->taskData);
         }
     }
 }
