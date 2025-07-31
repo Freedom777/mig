@@ -85,7 +85,7 @@ class FaceProcessJob implements ShouldQueue
                 }
 
                 $newFace->image_id = $image->id;
-                $newFace->idx = $idx;
+                $newFace->face_index = $idx;
                 $newFace->save();
                 $faces[] = $newFace;
             }

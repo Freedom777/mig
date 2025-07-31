@@ -55,4 +55,5 @@ COPY fast_api_server.py server.py
 EXPOSE 5000
 
 # Запуск через Gunicorn + Uvicorn
-CMD ["gunicorn", "server:app", "-k", "uvicorn.workers.UvicornWorker", "--bind", "0.0.0.0:5000", "--workers=1", "--threads=1"]
+CMD ["gunicorn", "server:app", "-k", "uvicorn.workers.UvicornWorker", "--bind", "0.0.0.0:5000", "--workers=1", "--threads=1", "--timeout=120"]
+

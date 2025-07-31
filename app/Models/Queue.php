@@ -9,9 +9,9 @@ class Queue extends Model
 {
     public $timestamps = false;
 
-    protected $fillable = ['job_key'];
+    protected $fillable = ['queue_key'];
 
     protected $casts = [
-        'job_key' => HexCast::class,
+        'queue_key' => HexCast::class,
     ];
 }

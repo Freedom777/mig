@@ -18,7 +18,7 @@ return new class extends Migration
             $table->unsignedBigInteger('image_id')->nullable(); // nullable for updating afterward
             $table->unsignedTinyInteger('face_index');
             $table->string('name')->nullable();
-            $table->json('encoding');
+            $table->json('encoding')->nullable();
             $table->enum('status', [Face::STATUS_PROCESS, Face::STATUS_UNKNOWN, Face::STATUS_NOT_FACE, Face::STATUS_OK])->default(Face::STATUS_PROCESS);
             $table->timestamps();
             $table->softDeletes();

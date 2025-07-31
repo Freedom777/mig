@@ -15,14 +15,14 @@ trait QueueAbleTrait {
             Queue::create(['queue_key' => $queueKey]);
             $className::dispatch($data)->onQueue($queueName);
             return response()->json([
-                'status' => 'queued',
+                'status' => 'success',
                 'message' => $objectName . ' added to processing queue',
                 'data' => $data // Опционально - возвращаем принятые данные
             ]);
         } catch (QueryException $e) {
             // задача уже в логе — пропускаем
             return response()->json([
-                'status' => 'error',
+                'status' => 'exists',
                 'message' => $objectName . ' already exists in processing queue',
                 'data' => $data // Опционально - возвращаем принятые данные
             ]);
@@ -31,7 +31,9 @@ trait QueueAbleTrait {
 
     public function removeFromQueue($className, $data) {
         $queueKey = md5(json_encode(['class' => $className]+$data));
-        $queue = Queue::where('queue_key', $queueKey)->first();
-        $queue->delete();
+        $queue = Queue::where('queue_key', hex2bin($queueKey))->first();
+        if ($queue) {
+            $queue->delete();
+        }
     }
 }

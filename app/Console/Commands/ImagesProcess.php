@@ -84,7 +84,7 @@ class ImagesProcess extends Command
         $duplicateId = Image::where('hash', $md5)->value('id');
 
         $requestData = [
-            'parent' => $duplicateId,
+            'parent_id' => $duplicateId,
             'source_disk' => $diskLabel,
             'source_path' => $sourcePath,
             'source_filename' => $filename,

@@ -47,7 +47,7 @@ class ImagesFacesCheck extends Command
                         $this->error('Failed to operate with face children (face ID: ' . $face->id . '): ' . $e->getMessage());
                     }
                 }
-                Face::where('id', $image->id)->forceDelete();
+                Face::where('image_id', $image->id)->forceDelete();
 
                 if ($image->status == Image::STATUS_RECHECK && file_exists($debugImagePath)) {
                     unlink($debugImagePath);
@@ -79,15 +79,4 @@ class ImagesFacesCheck extends Command
             $this->error('Failed to send to API (image ID: ' . $id . '): ' . $e->getMessage());
         }
     }
-
-    /*
-     $response = Http::attach(
-    'image', file_get_contents($pathToImage), 'image.jpg'
-)->post('http://face-api:5000/detect');
-
-dd($response->json());
-
-     */
-
-
 }
