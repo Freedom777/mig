@@ -19,6 +19,11 @@ const mainNavItems: NavItem[] = [
         href: '/images',
         icon: Camera,
     },
+    {
+        title: 'Photos',
+        href: '/photos',
+        icon: Camera,
+    },
 ];
 
 const footerNavItems: NavItem[] = [

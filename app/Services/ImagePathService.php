@@ -31,6 +31,17 @@ class ImagePathService
             ->__toString();
     }
 
+    public static function getThumbnailUrl(Image $image): string {
+        $path = implode('/', array_filter([
+            $image->path,
+            $image->thumbnail_path,
+            $image->thumbnail_filename
+        ]));
+        $url = Storage::disk($image->disk)->url($path);
+
+        return $url;
+    }
+
     public static function getThumbnailFilename(string $filename, string $method, int $width, int $height): string
     {
         $postfix = Str::of(env('THUMBNAIL_POSTFIX'))

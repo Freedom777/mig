@@ -23,13 +23,14 @@ class ImageGeolocationPoint extends Model
         'coordinates' => Point::class,
     ];
 
-    public function address(): BelongsTo
+    public function address()
     {
         return $this->belongsTo(ImageGeolocationAddress::class, 'image_geolocation_address_id');
     }
 
-    public function images(): HasMany
+    public function images()
     {
-        return $this->hasMany(Image::class, 'image_geolocation_point_id');
+        return $this->hasMany(Image::class);
     }
+
 }

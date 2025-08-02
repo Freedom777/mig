@@ -2,9 +2,11 @@
 
 use App\Http\Controllers\Api\ApiFaceController;
 use App\Http\Controllers\Api\ApiFaceProcessController;
+use App\Http\Controllers\Api\ApiFilterController;
 use App\Http\Controllers\Api\ApiGeolocationProcessController;
 use App\Http\Controllers\Api\ApiImageController;
 use App\Http\Controllers\Api\ApiMetadataProcessController;
+use App\Http\Controllers\Api\ApiPhotoController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\ApiImageProcessController;
@@ -13,6 +15,10 @@ use App\Http\Controllers\Api\ApiThumbnailProcessController;
 Route::get('/user', function (Request $request) {
     return $request->user();
 })->middleware('auth:sanctum');
+
+
+Route::get('/photos', [ApiPhotoController::class, 'index']);
+Route::get('/filters', [ApiFilterController::class, 'index']);
 
 // Группа для API с префиксом и middleware (например, для авторизации)
 // Route::middleware(['api', 'auth:sanctum'])->group(function () {

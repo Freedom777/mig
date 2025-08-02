@@ -3,8 +3,6 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Image extends Model
 {
@@ -55,9 +53,21 @@ class Image extends Model
         return bin2hex($value);
     }
 
-    public function geolocationPoint(): BelongsTo
+    public function geolocationPoint()
     {
-        return $this->belongsTo(ImageGeolocationPoint::class, 'geolocation_point_id');
+        return $this->belongsTo(ImageGeolocationPoint::class);
+    }
+
+    public function geolocationAddress()
+    {
+        return $this->hasOneThrough(
+            ImageGeolocationAddress::class,
+            ImageGeolocationPoint::class,
+            'id',                           // Foreign key on points table
+            'id',                           // Foreign key on addresses table
+            'image_geolocation_point_id',   // Local key on images table
+            'image_geolocation_address_id'  // Local key on points table
+        );
     }
 
     public function faces()
