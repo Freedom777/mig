@@ -25,7 +25,7 @@ export default {
     },
     computed: {
         imageUrl() {
-            return `/api/image/${this.imageId}.jpg`;
+            return `/api/image/debug/${this.imageId}.jpg`;
         },
         canComplete() {
             return this.faces.every(face => face.status !== 'process');
@@ -48,21 +48,21 @@ export default {
         },
         async prevPhoto() {
             if (!this.prevImage) {
-                this.noImagesLeft = true;
+                // Если нет предыдущего фото, остаёмся на текущем
                 return;
             }
+
             this.imageId = this.prevImage.id;
             await this.loadFaces();
-            await this.checkNavigation();
         },
         async nextPhoto() {
             if (!this.nextImage) {
-                this.noImagesLeft = true;
+                // Если нет следующего фото, остаёмся на текущем
                 return;
             }
+
             this.imageId = this.nextImage.id;
             await this.loadFaces();
-            await this.checkNavigation();
         },
         async loadFaces() {
             this.isLoading = true;
@@ -73,16 +73,15 @@ export default {
                     saved: false,
                 }));
 
-                // Проверка доступности после загрузки
                 await this.checkNavigation();
-                if (!this.prevImage && !this.nextImage && this.faces.length === 0) {
-                    this.noImagesLeft = true;
-                }
+
+                // Если imageId реально не существует (например, API вернул null)
+                this.noImagesLeft = !this.imageId;
 
             } catch (error) {
                 console.error('Failed to load faces:', error);
                 this.faces = [];
-                this.noImagesLeft = true; // если загрузка не удалась
+                this.noImagesLeft = true; // только при ошибке запроса
             } finally {
                 this.isLoading = false;
             }
@@ -114,36 +113,45 @@ export default {
         },
         async completeImage() {
             try {
-                await axios.patch(`/api/image/${this.imageId}/status`, {
-                    status: 'ok',
-                }, {
-                    headers: {
-                        Accept: 'application/json',
-                    }
+                await axios.patch(`/api/image/${this.imageId}/status`, { status: 'ok' }, {
+                    headers: { Accept: 'application/json' }
                 });
 
-                await this.nextPhoto();
-                if (!this.nextImage && !this.prevImage) {
+                // Если есть следующее фото — идем к нему
+                if (this.nextImage) {
+                    this.imageId = this.nextImage.id;
+                    await this.loadFaces();
+                }
+                // Если есть предыдущее фото — идем к нему
+                else if (this.prevImage) {
+                    this.imageId = this.prevImage.id;
+                    await this.loadFaces();
+                }
+                // Если других фото нет — показываем сообщение
+                else {
                     this.noImagesLeft = true;
                 }
+
             } catch (error) {
                 console.error('Complete failed:', error);
             }
         },
         async recheckImage() {
             try {
-                await axios.patch(`/api/image/${this.imageId}/status`, {
-                    status: 'recheck',
-                }, {
-                    headers: {
-                        Accept: 'application/json',
-                    }
+                await axios.patch(`/api/image/${this.imageId}/status`, { status: 'recheck' }, {
+                    headers: { Accept: 'application/json' }
                 });
 
-                await this.nextPhoto();
-                if (!this.nextImage && !this.prevImage) {
+                if (this.nextImage) {
+                    this.imageId = this.nextImage.id;
+                    await this.loadFaces();
+                } else if (this.prevImage) {
+                    this.imageId = this.prevImage.id;
+                    await this.loadFaces();
+                } else {
                     this.noImagesLeft = true;
                 }
+
             } catch (error) {
                 console.error('Recheck failed:', error);
             }
@@ -152,10 +160,16 @@ export default {
             try {
                 await axios.get(`/api/image/${this.imageId}/remove`);
 
-                await this.nextPhoto();
-                if (!this.nextImage && !this.prevImage) {
+                if (this.nextImage) {
+                    this.imageId = this.nextImage.id;
+                    await this.loadFaces();
+                } else if (this.prevImage) {
+                    this.imageId = this.prevImage.id;
+                    await this.loadFaces();
+                } else {
                     this.noImagesLeft = true;
                 }
+
             } catch (error) {
                 console.error('Remove failed:', error);
             }

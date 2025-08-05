@@ -35,7 +35,7 @@ class ApiImageController extends Controller
         ]);
     }
 
-    public function show($id) : BinaryFileResponse | JsonResponse
+    public function showDebugImage($id) : BinaryFileResponse | JsonResponse
     {
         $image = Image::findOrFail($id);
         $debug_path = $image->path . '/debug/' . $image->debug_filename;
@@ -44,6 +44,32 @@ class ApiImageController extends Controller
             return response()->json(['error' => 'File not found'], Response::HTTP_NOT_FOUND);
         }
         return response()->file(Storage::disk($image->disk)->path($debug_path));
+    }
+
+    public function show($id) : BinaryFileResponse | JsonResponse
+    {
+        $image = Image::findOrFail($id);
+        $path = $image->path . '/' . $image->filename;
+
+        if (!Storage::disk($image->disk)->exists($path)) {
+            return response()->json(['error' => 'File not found'], Response::HTTP_NOT_FOUND);
+        }
+        return response()->file(Storage::disk($image->disk)->path($path));
+    }
+
+    public function showThumbnail($id) : BinaryFileResponse | JsonResponse
+    {
+        $image = Image::findOrFail($id);
+        $thumbnailPath = implode('/', array_filter([
+            $image->path,
+            $image->thumbnail_path,
+            $image->thumbnail_filename
+        ]));
+
+        if (!Storage::disk($image->disk)->exists($thumbnailPath)) {
+            return response()->json(['error' => 'File not found'], Response::HTTP_NOT_FOUND);
+        }
+        return response()->file(Storage::disk($image->disk)->path($thumbnailPath));
     }
 
     public function status($id, Request $request) : JsonResponse {

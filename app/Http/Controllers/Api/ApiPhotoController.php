@@ -20,6 +20,7 @@ class ApiPhotoController extends Controller
             {
               "id": 1,
               "thumbnail": "/storage/thumbnails/img1.jpg",
+              "image" : "/storage/img1.jpg",
               "date": "2023-07-10",
               "city": "Berlin",
               "people": ["Oleg", "Anna"]
@@ -43,7 +44,7 @@ class ApiPhotoController extends Controller
         if ($request->has('cities')) {
             $query->whereHas('geolocationAddress', function ($q) use ($request) {
                 $q->whereIn(
-                    DB::raw("JSON_UNQUOTE(JSON_EXTRACT(address, '$.city'))"),
+                    DB::raw("JSON_UNQUOTE(JSON_EXTRACT(address, '$.address.city'))"),
                     $request->cities
                 );
             });
@@ -55,21 +56,24 @@ class ApiPhotoController extends Controller
         }
 
         // Фильтр по дате
-        if ($request->filled('dateFrom') && $request->filled('dateTo')) {
+        if ($request->filled('date_from') && $request->filled('date_to')) {
             $query->whereBetween(
                 DB::raw('YEAR(updated_at_file)'),
-                [$request->dateFrom, $request->dateTo]
+                [$request->date_from, $request->date_to]
             );
         }
 
+        // dd($query->toSql());
         $photos = $query->paginate(20);
+
 
         // Преобразуем ответ под формат фронтенда
         $data = $photos->through(function ($image) {
             // dd(ImagePathService::getThumbnailUrl($image));
             return [
                 'id' => $image->id,
-                'thumbnail' => ImagePathService::getThumbnailUrl($image),// Storage::url($image->thumbnail_path),
+                'image' => ImagePathService::getImageUrl($image),
+                'thumbnail' => ImagePathService::getThumbnailUrl($image),
                 'date' => Carbon::parse($image->updated_at_file)->toDateString(),
                 'city' => optional($image->geolocationAddress)->city_name,
                 'people' => $image->faces->pluck('name'),

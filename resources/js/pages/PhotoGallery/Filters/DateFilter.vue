@@ -3,48 +3,65 @@
         <div class="flex justify-between items-center mb-2">
             <h3 class="font-bold">Дата</h3>
             <button
-                v-if="dateFrom || dateTo"
+                v-if="range[0] !== minYear || range[1] !== maxYear"
                 @click="clearAll"
                 class="text-sm text-blue-600 hover:underline"
-            >Очистить всё</button>
+            >
+                Очистить всё
+            </button>
         </div>
 
-        <vue-slider
+        <Slider
             v-model="range"
             :min="minYear"
             :max="maxYear"
-            :interval="1"
-            :tooltip="'always'"
+            :step="1"
             :lazy="true"
+            :tooltips="true"
+            class="w-full"
         />
-        <p class="mt-2 text-sm text-gray-600">
-            {{ range[0] }} - {{ range[1] }}
-        </p>
+        <div class="flex justify-between text-sm mt-2">
+            <span>{{ range[0] }}</span>
+            <span>{{ range[1] }}</span>
+        </div>
     </div>
 </template>
 
 <script setup>
-import { computed, ref, watch } from 'vue'
-import VueSlider from 'vue-slider-component'
-import 'vue-slider-component/theme/default.css'
+import { ref, watch } from 'vue'
+import Slider from '@vueform/slider'
+import '@vueform/slider/themes/default.css'
 
+// Принимаем минимальный/максимальный год и массив дат
 const props = defineProps({
-    range: Array,
-    dateFrom: Number,
-    dateTo: Number
+    minYear: { type: Number, required: true },
+    maxYear: { type: Number, required: true },
+    modelValue: { type: Array, default: () => [] }
 })
-const emit = defineEmits(['update:dateFrom', 'update:dateTo'])
 
-const minYear = props.range[0] || 2000
-const maxYear = props.range[1] || new Date().getFullYear()
-const range = ref([props.dateFrom || minYear, props.dateTo || maxYear])
+// Эмитим обновление массива
+const emit = defineEmits(['update:modelValue'])
 
+// Локальное состояние слайдера
+const range = ref(
+    props.modelValue.length
+        ? props.modelValue
+        : [props.minYear, props.maxYear]
+)
+
+// Следим за изменениями и эмитим их наружу
 watch(range, (val) => {
-    emit('update:dateFrom', val[0])
-    emit('update:dateTo', val[1])
+    emit('update:modelValue', val)
 })
 
+// Кнопка "Очистить всё" сбрасывает диапазон к полному
 const clearAll = () => {
-    range.value = [minYear, maxYear]
+    range.value = [props.minYear, props.maxYear]
 }
 </script>
+
+<style scoped>
+.date-filter {
+    padding: 10px;
+}
+</style>

@@ -18,7 +18,10 @@ Route::get('/user', function (Request $request) {
 
 
 Route::get('/photos', [ApiPhotoController::class, 'index']);
+Route::post('/photos', [ApiPhotoController::class, 'index']);
 Route::get('/filters', [ApiFilterController::class, 'index']);
+
+Route::get('/thumbnail/{id}.jpg', [ApiImageController::class, 'showThumbnail']);
 
 // Группа для API с префиксом и middleware (например, для авторизации)
 // Route::middleware(['api', 'auth:sanctum'])->group(function () {
@@ -38,6 +41,7 @@ Route::controller(ApiFaceController::class)->prefix('face')->group(function () {
 
 Route::controller(ApiImageController::class)->prefix('image')->group(function () {
     Route::get('{id}/nearby', 'nearby');
+    Route::get('debug/{id}.jpg', 'showDebugImage');
     Route::get('{id}.jpg', 'show');
     Route::get('{id}/remove', 'remove');
 

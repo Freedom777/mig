@@ -125,6 +125,7 @@ return [
 
     'api_url' =>  env('APP_API_URL', 'http://laravel.test'),
     'face_api_url' => env('FACE_API_URL', 'http://localhost:5000'),
+    'image_api_url' => env('IMAGE_API_URL', 'http://localhost:8000/api'),
     /*'api_url' => env('APP_ENV') === 'local' && (env('LARAVEL_SAIL') || file_exists('/.dockerenv'))
         ? 'http://host.docker.internal:' . env('API_PORT', '8000')
         : env('API_URL'),*/

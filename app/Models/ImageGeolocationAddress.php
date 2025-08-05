@@ -38,11 +38,11 @@ class ImageGeolocationAddress extends Model
 
     public static function getCitiesList() : Collection
     {
-        return self::query()
-            ->selectRaw("DISTINCT JSON_UNQUOTE(JSON_EXTRACT(address, '$.city')) as city")
-            ->whereNotNull(DB::raw("JSON_UNQUOTE(JSON_EXTRACT(address, '$.city'))"))
+        return static::query()
+            ->selectRaw("JSON_UNQUOTE(JSON_EXTRACT(address, '$.address.city')) as city")
+            ->whereNotNull('address')
+            ->distinct()
             ->pluck('city')
-            ->filter() // удаляем пустые значения
-            ->values();
+            ->filter();
     }
 }

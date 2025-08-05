@@ -1,17 +1,17 @@
 <template>
-    <div class="border rounded shadow hover:shadow-lg transition">
-        <img :src="photo.thumbnail" alt="" class="w-full h-48 object-cover rounded-t">
-        <div class="p-2 text-sm text-gray-700">
-            <p>{{ formatDate(photo.date) }}</p>
-            <p>{{ photo.city }}</p>
+    <div class="cursor-pointer" @click="$emit('open', photo.image)">
+        <img :src="photo.thumbnail" class="w-full h-auto" />
+        <div class="text-xs mt-1">
+            <span>{{ photo.date }}</span>
+            <span v-if="photo.city"> — {{ photo.city }}</span>
         </div>
     </div>
 </template>
 
 <script setup>
-defineProps({ photo: Object })
+const props = defineProps({
+    photo: { type: Object, required: true }
+})
 
-const formatDate = (date) => {
-    return new Date(date).toLocaleDateString('ru-RU', { year: 'numeric', month: 'long' })
-}
+defineEmits(['open'])
 </script>

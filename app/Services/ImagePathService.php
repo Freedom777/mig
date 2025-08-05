@@ -32,14 +32,18 @@ class ImagePathService
     }
 
     public static function getThumbnailUrl(Image $image): string {
-        $path = implode('/', array_filter([
+        /*$path = implode('/', array_filter([
             $image->path,
             $image->thumbnail_path,
             $image->thumbnail_filename
         ]));
-        $url = Storage::disk($image->disk)->url($path);
+        $url = Storage::disk($image->disk)->url($path);*/
 
-        return $url;
+        return config('app.image_api_url') . '/thumbnail/' . $image->id . '.jpg';
+    }
+
+    public static function getImageUrl(Image $image): string {
+        return config('app.image_api_url') . '/image/' . $image->id . '.jpg';
     }
 
     public static function getThumbnailFilename(string $filename, string $method, int $width, int $height): string

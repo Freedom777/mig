@@ -41,6 +41,8 @@ return [
         'dfotos' => [
             'driver' => 'local',
             'root' => '/dfotos',
+            'url' => env('APP_URL') . '/dfotos',
+            'visibility' => 'public',
             'serve' => true,
             'throw' => false,
             'report' => false,
