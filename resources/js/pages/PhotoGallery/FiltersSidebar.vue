@@ -57,7 +57,7 @@ const updateFilter = (key, value) => {
 <style scoped>
 .filters-sidebar {
     padding: 1rem;
-    background-color: #f9fafb;
+    /*background-color: #f9fafb;*/
     min-height: 100vh;
 }
 
@@ -65,6 +65,6 @@ const updateFilter = (key, value) => {
     font-size: 1.5rem;
     font-weight: 700;
     margin-bottom: 1.5rem;
-    color: #111827;
+    /*color: #111827;*/
 }
 </style>

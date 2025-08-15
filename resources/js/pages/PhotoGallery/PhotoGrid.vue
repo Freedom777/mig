@@ -21,6 +21,8 @@ const props = defineProps({
 
 const selectedImage = ref(null)
 const isLoading = ref(false)
+const lastScrollTime = ref(0)
+const scrollTimeout = ref(null)
 
 const openModal = (imageUrl) => {
     selectedImage.value = imageUrl
@@ -47,8 +49,14 @@ const hasMorePages = computed(() => {
     return props.photos.current_page < props.photos.last_page
 })
 
-// Infinite scroll logic
+// Throttled scroll handler to prevent multiple API calls
 const handleScroll = () => {
+    const now = Date.now()
+
+    // Throttle: only check scroll position every 100ms
+    if (now - lastScrollTime.value < 100) return
+    lastScrollTime.value = now
+
     if (isLoading.value || !hasMorePages.value) return
 
     const scrollTop = window.pageYOffset || document.documentElement.scrollTop
@@ -58,7 +66,24 @@ const handleScroll = () => {
     // Load more when user scrolls to within 200px of the bottom
     const threshold = 200
     if (scrollTop + clientHeight >= scrollHeight - threshold) {
-        loadMore()
+        // Clear any existing timeout
+        if (scrollTimeout.value) {
+            clearTimeout(scrollTimeout.value)
+        }
+
+        // Debounce: wait 150ms before actually triggering load
+        scrollTimeout.value = setTimeout(() => {
+            // Double-check conditions before loading
+            if (!isLoading.value && hasMorePages.value) {
+                const currentScrollTop = window.pageYOffset || document.documentElement.scrollTop
+                const currentScrollHeight = document.documentElement.scrollHeight
+                const currentClientHeight = window.innerHeight
+
+                if (currentScrollTop + currentClientHeight >= currentScrollHeight - threshold) {
+                    loadMore()
+                }
+            }
+        }, 150)
     }
 }
 
@@ -68,6 +93,10 @@ onMounted(() => {
 
 onUnmounted(() => {
     window.removeEventListener('scroll', handleScroll)
+    // Clear timeout on unmount
+    if (scrollTimeout.value) {
+        clearTimeout(scrollTimeout.value)
+    }
 })
 </script>
 
