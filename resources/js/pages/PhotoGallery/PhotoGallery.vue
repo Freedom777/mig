@@ -1,11 +1,11 @@
 <script setup>
 import { ref, onMounted } from 'vue'
-import AppLayout from '@/layouts/AppLayout.vue';
+import AppLayout from '@/layouts/AppLayout.vue'
 import FiltersSidebar from './FiltersSidebar.vue'
 import PhotoGrid from './PhotoGrid.vue'
 import axios from 'axios'
 
-// Состояния
+// Filter states
 const filters = ref({
     people: [],
     cities: [],
@@ -17,38 +17,56 @@ const selectedFilters = ref({
     people: [],
     cities: [],
     tags: [],
-    dateRange: [2000, new Date().getFullYear()]
+    dateRange: []
 })
 
-// Фото с пагинацией
+// Photos with pagination
 const photos = ref({
     data: [],
     current_page: 1,
     last_page: 1
 })
 
-// Загрузка фильтров
+// Load filter options
 const fetchFilters = async () => {
     try {
         const res = await axios.get('/api/filters')
         filters.value = res.data
-        selectedFilters.value.dateRange = res.data.dateRange
+
+        // Initialize selected filters if not already set
+        if (!selectedFilters.value.people.length && res.data.people) {
+            selectedFilters.value.people = []
+        }
+        if (!selectedFilters.value.cities.length && res.data.cities) {
+            selectedFilters.value.cities = []
+        }
+        if (!selectedFilters.value.tags.length && res.data.tags) {
+            selectedFilters.value.tags = []
+        }
+        // DateFilter will set its own initial range
     } catch (error) {
-        console.error('Ошибка загрузки фильтров:', error)
+        console.error('Error loading filters:', error)
     }
 }
 
-// Загрузка фото
+// Load photos with current filters
 const fetchPhotos = async (page = 1) => {
     try {
-        const res = await axios.get('/api/photos', {
-            params: {
-                ...selectedFilters.value,
-                date_from: selectedFilters.value.dateRange[0],
-                date_to: selectedFilters.value.dateRange[1],
-                page
-            }
-        })
+        // Prepare parameters
+        const params = {
+            people: selectedFilters.value.people,
+            cities: selectedFilters.value.cities,
+            tags: selectedFilters.value.tags,
+            page
+        }
+
+        // Add date range if set (DateFilter will provide date strings like "2024-01")
+        if (selectedFilters.value.dateRange && selectedFilters.value.dateRange.length === 2) {
+            params.date_from = selectedFilters.value.dateRange[0]
+            params.date_to = selectedFilters.value.dateRange[1]
+        }
+
+        const res = await axios.get('/api/photos', { params })
 
         if (page === 1) {
             photos.value = res.data.data
@@ -59,25 +77,32 @@ const fetchPhotos = async (page = 1) => {
             }
         }
     } catch (error) {
-        console.error('Ошибка загрузки фото:', error)
+        console.error('Error loading photos:', error)
     }
 }
 
-// Реакция на изменения фильтров
+// Handle filter changes
 const onFiltersChanged = () => {
-    fetchPhotos()
+    fetchPhotos(1) // Always start from page 1 when filters change
 }
 
-// При монтировании
+// Load more photos for pagination
+const loadMorePhotos = () => {
+    if (photos.value.current_page < photos.value.last_page) {
+        fetchPhotos(photos.value.current_page + 1)
+    }
+}
+
+// Initialize on component mount
 onMounted(async () => {
     await fetchFilters()
-    await fetchPhotos()
+    // fetchPhotos will be called automatically when DateFilter sets initial range
 })
 </script>
 
 <template>
-    <AppLayout title="Фотогалерея">
-        <div class="flex">
+    <AppLayout title="Photo Gallery">
+        <div class="flex min-h-screen">
             <FiltersSidebar
                 class="w-1/4"
                 :filters="filters"
@@ -87,7 +112,7 @@ onMounted(async () => {
             <PhotoGrid
                 class="w-3/4"
                 :photos="photos"
-                :on-load-more="() => fetchPhotos(photos.current_page + 1)"
+                :on-load-more="loadMorePhotos"
             />
         </div>
     </AppLayout>

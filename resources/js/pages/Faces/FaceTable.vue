@@ -9,7 +9,7 @@ export default {
     props: {
         initialImageId: {
             type: Number,
-            required: true,
+            default: null
         },
     },
     data() {
@@ -25,7 +25,7 @@ export default {
     },
     computed: {
         imageUrl() {
-            return `/api/image/debug/${this.imageId}.jpg`;
+            return this.imageId ? `/api/image/debug/${this.imageId}.jpg` : '';
         },
         canComplete() {
             return this.faces.every(face => face.status !== 'process');
@@ -65,6 +65,13 @@ export default {
             await this.loadFaces();
         },
         async loadFaces() {
+            // Если imageId отсутствует — просто отмечаем, что фото нет
+            if (!this.imageId) {
+                this.noImagesLeft = true;
+                this.faces = [];
+                return;
+            }
+
             this.isLoading = true;
             try {
                 const response = await axios.get(`/api/face/list?image_id=${this.imageId}`);

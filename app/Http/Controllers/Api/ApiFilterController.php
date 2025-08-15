@@ -24,7 +24,7 @@ class ApiFilterController extends Controller
         }
         */
         $data = [
-            'people' => Face::distinct()->pluck('name')->filter(),
+            'people' => Face::distinct()->whereNotNull('name')->pluck('name'),
             'cities' => ImageGeolocationAddress::getCitiesList(),
             'tags' => Image::distinct()->pluck('path'),
             'dateRange' => [

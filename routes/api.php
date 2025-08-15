@@ -7,7 +7,9 @@ use App\Http\Controllers\Api\ApiGeolocationProcessController;
 use App\Http\Controllers\Api\ApiImageController;
 use App\Http\Controllers\Api\ApiMetadataProcessController;
 use App\Http\Controllers\Api\ApiPhotoController;
+use App\Models\Image;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\ApiImageProcessController;
 use App\Http\Controllers\Api\ApiThumbnailProcessController;
@@ -46,4 +48,22 @@ Route::controller(ApiImageController::class)->prefix('image')->group(function ()
     Route::get('{id}/remove', 'remove');
 
     Route::patch('{id}/status', 'status');
+});
+
+Route::get('/photos/year-counts', function () {
+    $counts = Image::selectRaw("YEAR(updated_at_file) as year, count(*) as count")
+        ->groupBy(DB::raw('YEAR(updated_at_file)'))
+        ->orderBy('year')
+        ->pluck('count', 'year')
+        ->toArray();
+
+    return response()->json(array_map(fn($y) => ['year' => (int)$y, 'count' => $counts[$y]], array_keys($counts)));
+});
+
+Route::get('/photos/date-available', function () {
+    return Image::selectRaw("DATE_FORMAT(updated_at_file, '%Y-%m') as ym, COUNT(*) as count")
+        ->groupBy('ym')
+        ->orderBy('ym')
+        ->get()
+        ->map(fn($row) => ['date' => $row->ym, 'count' => $row->count]);
 });
