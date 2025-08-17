@@ -67,6 +67,17 @@ class ImagesProcess extends Command
 
         // Рекурсивно обрабатываем подкаталоги
         foreach ($directories as $subDir) {
+            $basename = basename($subDir);
+
+            // исключаем debug и подпапки формата WIDTHxHEIGHT (например 300x200)
+            if (
+                strtolower($basename) === 'debug' ||
+                preg_match('/^\d+x\d+$/', $basename)
+            ) {
+                $this->info('Skipped directory: ' . $subDir);
+                continue;
+            }
+
             $this->processDirectory($diskLabel, $subDir);
         }
     }

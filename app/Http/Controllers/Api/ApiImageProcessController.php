@@ -25,7 +25,7 @@ class ApiImageProcessController extends Controller
                 'hash' => ['required', 'string', 'size:32', 'regex:/^[a-f0-9]{32}$/i'],
                 'created_at_file' => 'required|date',
                 'updated_at_file' => 'required|date',
-                'parent_id' => 'integer|exists:images,id',
+                'parent_id' => 'nullable|integer|exists:images,id',
             ], [
                 'source_disk.required' => 'Source disk is required',
                 'source_path.required' => 'Source path is required',

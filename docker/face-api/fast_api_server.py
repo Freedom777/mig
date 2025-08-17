@@ -5,7 +5,7 @@ import numpy as np
 import os
 from fastapi import FastAPI, File, UploadFile, Form
 from fastapi.responses import JSONResponse
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFont
 from io import BytesIO
 from pydantic import BaseModel
 from typing import List
@@ -69,9 +69,10 @@ def save_debug_image(image_array, locations, original_disk, original_filename, i
 
     img = Image.fromarray(image_array)
     draw = ImageDraw.Draw(img)
+    font = ImageFont.truetype("DejaVuSans.ttf", 30)
     for i, (top, right, bottom, left) in enumerate(locations):
         draw.rectangle([(left, top), (right, bottom)], outline="green", width=3)
-        draw.text((left + 5, bottom - 20), f"Face {i}", fill="red")
+        draw.text((left + 5, bottom - 40), f"Face {i}", fill="red", font=font)
     img.save(debug_path, quality=90)
 
     return debug_path

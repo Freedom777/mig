@@ -57,9 +57,12 @@ class GeolocationProcessJob implements ShouldQueue
                 }
 
                 $pointLatLon = new Point($latitude, $longitude);
+                // ищем точку по координатам
                 $point = ImageGeolocationPoint::where('coordinates', $pointLatLon)->first();
+
                 if (!$point) {
-                    $addressId = ImageGeolocationAddress::whereContains('osm_area', $point)->value('id');
+                    // ищем адрес, чей bounding box содержит эту точку
+                    $addressId = ImageGeolocationAddress::whereContains('osm_area', $pointLatLon)->value('id');
                     if (!$addressId) {
                         $addressId = $this->getAddressId($latitude, $longitude);
                         if (!$addressId) {
@@ -81,7 +84,8 @@ class GeolocationProcessJob implements ShouldQueue
         });
     }
 
-    private function getAddressId(float $latitude, float $longitude) : false|int {
+    private function getAddressId(float $latitude, float $longitude): false|int
+    {
         $locUrl = Str::of(env('GEOLOCATION_URL'))
             ->replace('{latitude}', $latitude)
             ->replace('{longitude}', $longitude)
@@ -96,18 +100,39 @@ class GeolocationProcessJob implements ShouldQueue
         }
 
         $addressAr = $response->json();
-        if (!is_array($addressAr)) {
+        if (!is_array($addressAr) || empty($addressAr['boundingbox'])) {
             Log::error('Invalid geolocation response: ' . $response->body());
             return false;
         }
 
-        $locAddress = new ImageGeolocationAddress();
-        $locAddress->osm_id = $addressAr['osm_id'];
-        $locAddress->osm_area = $addressAr['boundingbox'];
-        $locAddress->address = $addressAr;
-        $locAddress->save();
+        // boundingbox: [lat_min, lat_max, lon_min, lon_max]
+        [$latMin, $latMax, $lonMin, $lonMax] = array_map('floatval', $addressAr['boundingbox']);
 
-        return $locAddress->id;
+        // Построение полигона (WKT) в порядке lon lat (X Y)
+        $polygonWkt = sprintf(
+            'POLYGON((%f %f, %f %f, %f %f, %f %f, %f %f))',
+            $lonMin, $latMin,  // нижний левый
+            $lonMin, $latMax,  // верхний левый
+            $lonMax, $latMax,  // верхний правый
+            $lonMax, $latMin,  // нижний правый
+            $lonMin, $latMin   // замыкаем
+        );
+
+        try {
+            $locAddress = new ImageGeolocationAddress();
+            $locAddress->osm_id = $addressAr['osm_id'];
+            $locAddress->osm_area = DB::raw("ST_GeomFromText('$polygonWkt', 4326)");
+            $locAddress->address = $addressAr;
+            $locAddress->save();
+
+            return $locAddress->id;
+        } catch (\Exception $e) {
+            Log::error('Failed to save geolocation address: ' . $e->getMessage(), [
+                'polygon' => $polygonWkt,
+                'address' => $addressAr
+            ]);
+            return false;
+        }
     }
 }
 

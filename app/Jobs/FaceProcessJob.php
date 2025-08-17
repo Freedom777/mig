@@ -56,27 +56,31 @@ class FaceProcessJob implements ShouldQueue
             }
 
             $newEncodings = $response->json()['encodings'] ?? [];
-            $faces = Face::all();
+            $faces = Face::query()
+                ->whereNotNull('encoding')
+                ->get(['id', 'encoding', 'parent_id']); // сразу тащим parent_id
 
             foreach ($newEncodings as $idx => $newEncoding) {
                 $newFace = new Face();
                 $newFace->encoding = $newEncoding;
 
-                if ($faces->count()) {
+                if ($faces->isNotEmpty()) {
                     $knownEncodings = $faces->pluck('encoding')->toArray();
+
                     $compareResponse = Http::post(config('app.face_api_url') . '/compare', [
-                        'encoding' => $newEncoding,
+                        'encoding'   => $newEncoding,
                         'candidates' => $knownEncodings,
                     ]);
 
                     if ($compareResponse->successful()) {
                         $distances = $compareResponse->json()['distances'] ?? [];
 
-                        foreach ($distances as $index => $distance) {
-                            if ($distance < 0.6) {
-                                $matchedFace = $faces[$index];
+                        if ($distances) {
+                            $minValue = min($distances);
+                            $minIndex = array_search($minValue, $distances);
+                            if ($minValue < 0.6) {
+                                $matchedFace = $faces[$minIndex];
                                 $newFace->parent_id = $matchedFace->parent_id ?? $matchedFace->id;
-                                break;
                             }
                         }
                     } else {
@@ -87,12 +91,15 @@ class FaceProcessJob implements ShouldQueue
                 $newFace->image_id = $image->id;
                 $newFace->face_index = $idx;
                 $newFace->save();
-                $faces[] = $newFace;
+
+                // Добавляем нового в коллекцию для следующих сравнений
+                $faces->push($newFace->only(['id', 'encoding', 'parent_id']));
             }
 
             $image->debug_filename = is_null($debugPath = $response->json()['debug_image_path'])
                 ? null
                 : basename($debugPath);
+
             $image->faces_checked = 1;
             $image->save();
         } catch (\Exception $e) {
