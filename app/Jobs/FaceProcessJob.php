@@ -77,8 +77,8 @@ class FaceProcessJob implements ShouldQueue
 
                         if ($distances) {
                             $minValue = min($distances);
-                            $minIndex = array_search($minValue, $distances);
                             if ($minValue < 0.6) {
+                                $minIndex = array_search($minValue, $distances);
                                 $matchedFace = $faces[$minIndex];
                                 $newFace->parent_id = $matchedFace->parent_id ?? $matchedFace->id;
                             }

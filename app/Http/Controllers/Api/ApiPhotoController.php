@@ -35,9 +35,11 @@ class ApiPhotoController extends Controller
 
         // Фильтр по людям
         if ($request->has('people')) {
+            \Log::info('People filter applied with:', $request->people);
             $query->whereHas('faces', function ($q) use ($request) {
                 $q->whereIn('name', $request->people);
             });
+            \Log::info('SQL after people filter:', [$query->toSql(), $query->getBindings()]);
         }
 
         // Фильтр по городам (берем city из JSON в address)
@@ -57,10 +59,10 @@ class ApiPhotoController extends Controller
 
         // Фильтр по дате
         if ($request->filled('date_from') && $request->filled('date_to')) {
-            $query->whereBetween(
-                DB::raw('YEAR(updated_at_file)'),
-                [$request->date_from, $request->date_to]
-            );
+            $dateFrom = Carbon::createFromFormat('Y-m', $request->date_from)->startOfMonth();
+            $dateTo   = Carbon::createFromFormat('Y-m', $request->date_to)->endOfMonth();
+
+            $query->whereBetween('updated_at_file', [$dateFrom, $dateTo]);
         }
 
         // dd($query->toSql());

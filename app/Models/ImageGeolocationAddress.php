@@ -36,13 +36,15 @@ class ImageGeolocationAddress extends Model
         return $this->address['city'] ?? null;
     }
 
-    public static function getCitiesList() : Collection
+    public static function getCitiesList() : array
     {
         return static::query()
             ->selectRaw("JSON_UNQUOTE(JSON_EXTRACT(address, '$.address.city')) as city")
             ->whereNotNull('address')
             ->distinct()
             ->pluck('city')
-            ->filter();
+            ->filter()
+            ->values()
+            ->toArray();
     }
 }

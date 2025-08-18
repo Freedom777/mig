@@ -23,6 +23,7 @@ class ApiFilterController extends Controller
           "dateRange": [2018, 2025]
         }
         */
+
         $data = [
             'people' => Face::distinct()->whereNotNull('name')->pluck('name'),
             'cities' => ImageGeolocationAddress::getCitiesList(),

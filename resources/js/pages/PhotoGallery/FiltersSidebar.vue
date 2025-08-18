@@ -26,31 +26,33 @@ const updateFilter = (key, value) => {
 
 <template>
     <div class="filters-sidebar">
-        <h2 class="sidebar-title">Filters</h2>
+        <div class="filters-content">
+            <h2 class="sidebar-title">Filters</h2>
 
-        <PeopleFilter
-            :people="filters.people"
-            :model-value="selectedFilters.people"
-            @update:model-value="val => updateFilter('people', val)"
-        />
+            <PeopleFilter
+                :people="filters.people"
+                :model-value="selectedFilters.people"
+                @update:model-value="val => updateFilter('people', val)"
+            />
 
-        <CitiesFilter
-            :cities="filters.cities"
-            :model-value="selectedFilters.cities"
-            @update:model-value="val => updateFilter('cities', val)"
-        />
+            <CitiesFilter
+                :cities="filters.cities"
+                :model-value="selectedFilters.cities"
+                @update:model-value="val => updateFilter('cities', val)"
+            />
 
-        <TagsFilter
-            :tags="filters.tags"
-            :model-value="selectedFilters.tags"
-            @update:model-value="val => updateFilter('tags', val)"
-        />
+            <TagsFilter
+                :tags="filters.tags"
+                :model-value="selectedFilters.tags"
+                @update:model-value="val => updateFilter('tags', val)"
+            />
 
-        <DateFilter
-            :model-value="selectedFilters.dateRange"
-            @update:model-value="val => updateFilter('dateRange', val)"
-            @change="$emit('filters-changed')"
-        />
+            <DateFilter
+                :model-value="selectedFilters.dateRange"
+                @update:model-value="val => updateFilter('dateRange', val)"
+                @change="$emit('filters-changed')"
+            />
+        </div>
     </div>
 </template>
 
@@ -61,10 +63,36 @@ const updateFilter = (key, value) => {
     min-height: 100vh;
 }
 
+.filters-content {
+    position: sticky;
+    top: 1rem; /* Отступ от верха экрана */
+    max-height: calc(100vh - 2rem); /* Максимальная высота с учетом отступов */
+    overflow-y: auto; /* Прокрутка если содержимое не помещается */
+}
+
 .sidebar-title {
     font-size: 1.5rem;
     font-weight: 700;
     margin-bottom: 1.5rem;
     /*color: #111827;*/
+}
+
+/* Опциональные стили для скроллбара */
+.filters-content::-webkit-scrollbar {
+    width: 6px;
+}
+
+.filters-content::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 3px;
+}
+
+.filters-content::-webkit-scrollbar-thumb {
+    background: #c1c1c1;
+    border-radius: 3px;
+}
+
+.filters-content::-webkit-scrollbar-thumb:hover {
+    background: #a1a1a1;
 }
 </style>
