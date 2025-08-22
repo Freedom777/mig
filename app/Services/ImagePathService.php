@@ -57,6 +57,15 @@ class ImagePathService
 
         return pathinfo($filename, PATHINFO_FILENAME) . $postfix . '.' . $extension;
     }
+
+    public static function getDefaultThumbnailPath(Image $image): string
+    {
+        return Storage::disk($image->disk)->path(
+            $image->path . '/' .
+            self::getThumbnailSubdir(env('THUMBNAIL_WIDTH'), env('THUMBNAIL_HEIGHT')) . '/' .
+            self::getThumbnailFilename($image->filename, env('THUMBNAIL_METHOD'), env('THUMBNAIL_WIDTH'), env('THUMBNAIL_HEIGHT'))
+        );
+    }
 ///////////////////////////////////////////
 ///
     /*
