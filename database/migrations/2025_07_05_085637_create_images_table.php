@@ -39,6 +39,7 @@ return new class extends Migration {
             $table->timestamps();
 
             $table->enum('status', [Image::STATUS_PROCESS, Image::STATUS_NOT_PHOTO, Image::STATUS_RECHECK, Image::STATUS_OK])->default(Image::STATUS_PROCESS);
+            $table->string('last_error')->nullable();
 
             $table->index(['disk', 'path', 'filename'], 'disk_path_filename_index');
             $table->index(['faces_checked'], 'faces_checked_index');
