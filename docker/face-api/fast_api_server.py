@@ -26,16 +26,49 @@ app = FastAPI(
     redoc_url=None,
     openapi_url=None
 )
-MAX_DIM = 2000  # Ограничение на размер изображения
+SCALES = [1600, 2000, 2600]  # Ограничение на размер изображения
 
-def resize_image_if_needed(img):
+def resize_image_if_needed(img, max_dim=2000):
     w, h = img.size
-    if max(h, w) > MAX_DIM:
-        scale = MAX_DIM / max(h, w)
+    if max(w, h) > max_dim:
+        scale = max_dim / max(w, h)
         new_size = (int(w * scale), int(h * scale))
         logger.info(f"Resizing from {w}x{h} to {new_size[0]}x{new_size[1]}")
         return img.resize(new_size, Image.LANCZOS)
     return img
+
+def detect_faces_multiscale(img_orig):
+    last_np = None
+    for dim in SCALES:
+        img = resize_image_if_needed(img_orig, max_dim=dim)
+        image_np = image_to_np_array(img)
+        if image_np is False:
+            return {"error": "Image must be 3-channel RGB"}
+
+        last_np = image_np  # будем использовать для дебага, если лиц не найдём
+
+        # CNN
+        logger.info(f"Trying CNN at {dim}px...")
+        try:
+            locations = face_recognition.face_locations(image_np, model='cnn')
+        except RuntimeError as e:
+            if "CUDA out of memory" in str(e):
+                return {"error": "CUDA_OOM"}
+            logger.warning(f"CNN failed at {dim}px: {e}")
+            locations = []
+
+        if locations:
+            return {"locations": locations, "image_np": image_np, "scale": dim, "model": "cnn"}
+
+        # HOG fallback
+        logger.info(f"Trying HOG at {dim}px...")
+        locations = face_recognition.face_locations(image_np, model='hog')
+        if locations:
+            return {"locations": locations, "image_np": image_np, "scale": dim, "model": "hog"}
+
+    # лиц нет на всех масштабах — это НЕ ошибка
+    return {"locations": [], "image_np": last_np, "scale": None, "model": None}
+
 
 def image_to_np_array(img):
     if img.mode != 'RGB':
@@ -100,44 +133,50 @@ async def encode_faces(
         img_orig = Image.open(BytesIO(contents))
 
         logger.info(f"Processing image: {original_path}/{filename}, format: {img_orig.format}, mode: {img_orig.mode}, size: {img_orig.size}")
-        img = resize_image_if_needed(img_orig)
-        image_np = image_to_np_array(img)
+        result = detect_faces_multiscale(img_orig)
 
-        if image_np is False:
-            return JSONResponse(status_code=400, content={'error': 'Image must be 3-channel RGB'})
+        if "error" in result:
+            # Фатальная ошибка только для non-RGB (или CUDA_OOM и т.п.)
+            return JSONResponse(status_code=400, content={"error": result["error"]})
 
-        logger.info(f"DLIB_USE_CUDA: {dlib.DLIB_USE_CUDA}, CUDA devices: {dlib.cuda.get_num_devices()}")
-        locations = face_recognition.face_locations(image_np, model='cnn')
-        logger.info(f"CNN model found {len(locations)} faces at: {locations}")
+        locations = result["locations"]
+        image_np  = result["image_np"]
+        logger.info(f"Detected {len(locations)} faces at scale {result['scale']}")
 
-        if not locations:
-            image_np = image_to_np_array(img_orig)
+        encodings = []
+        if locations:
+            encodings = face_recognition.face_encodings(image_np, locations)
+            logger.info(f"Got {len(encodings)} encodings")
+            # for idx, e in enumerate(encodings):
+            #    logger.info(f"Encoding {idx} shape: {e.shape}, first values: {e[:5].tolist()}")
+        else:
+            logger.info("No faces found → encodings skipped")
 
-            if image_np is False:
-                return JSONResponse(status_code=400, content={'error': 'Image must be 3-channel RGB'})
-            locations = face_recognition.face_locations(image_np, model='cnn')
-            logger.info(f"CNN model fallback (original image) found {len(locations)} faces at: {locations}")
-
-            if not locations:
-                locations = face_recognition.face_locations(image_np, model='hog')
-                logger.info(f"HOG model fallback (original image) found {len(locations)} faces at: {locations}")
-
-        encodings = face_recognition.face_encodings(image_np, locations)
-        logger.info(f"Got {len(encodings)} encodings")
-        for idx, e in enumerate(encodings):
-            logger.info(f"Encoding {idx} shape: {e.shape}, first values: {e[:5].tolist()}")
-
+        # ✅ сохраняем дебаг всегда, даже когда лиц нет
         # debug_path = None
         # if locations:
         debug_path = save_debug_image(image_np, locations, original_disk, original_path, image_debug_subdir)
-        logger.info(f"Debug image saved to: {debug_path}")
+        logger.info(f"Saved debug image to {debug_path}")
 
         logger.info(f"Encoding took {round(time.time() - start, 2)} seconds")
-        return JSONResponse(content={
-            'encodings': [e.tolist() for e in encodings],
-            'debug_image_path': debug_path
-        })
+        return JSONResponse(
+            content={
+                "encodings": [e.tolist() for e in encodings],  # [] если лиц нет
+                # "locations": locations,                        # [] если лиц нет
+                "debug_image_path": debug_path,
+                # "scale": result["scale"],                      # None если лиц нет
+                # "model": result["model"]                       # None если лиц нет
+            }
+        )
 
+    except RuntimeError as e:
+        #if "CUDA out of memory" in str(e):
+        #    return {"error": "CUDA_OOM"}
+        if "reason: out of memory" in str(e):
+            return {"error": "CUDA_OOM"}
+        raise
+    except MemoryError:
+        return {"error": "MemoryError"}
     except Exception as e:
         logger.error(f"Exception during encoding: {str(e)}", exc_info=True)
         return JSONResponse(status_code=500, content={'error': f"Face processing failed: {str(e)}"})

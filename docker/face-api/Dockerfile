@@ -1,5 +1,12 @@
 FROM nvidia/cuda:12.1.1-devel-ubuntu22.04
 
+ARG WWWUSER
+ARG WWWGROUP
+
+# Создание пользователя sail
+RUN groupadd --force -g ${WWWGROUP} sail && \
+    useradd -ms /bin/bash --no-user-group -g ${WWWGROUP} -u ${WWWUSER} sail
+
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PYTHONUNBUFFERED=1
 
@@ -25,6 +32,8 @@ RUN cd /tmp && \
     cp -P cudnn-linux-x86_64-8.9.7.29_cuda12-archive/lib/* /usr/local/cuda/lib64/ && \
     chmod a+r /usr/local/cuda/include/cudnn*.h /usr/local/cuda/lib64/libcudnn* && \
     rm -rf /tmp/cudnn*
+
+RUN pip3 install --upgrade pip setuptools wheel packaging
 
 ENV LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH
 ENV CPATH=/usr/local/cuda/include:$CPATH

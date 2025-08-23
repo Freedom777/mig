@@ -39,6 +39,7 @@ class Image extends Model
         'thumbnail_height',
 
         'status',
+        'last_error'
     ];
 
     // Мутатор для записи

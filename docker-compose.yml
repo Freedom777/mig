@@ -22,6 +22,9 @@ services:
         build:
             context: ./docker/face-api      # Путь к Dockerfile для face_api
             dockerfile: Dockerfile
+            args:
+                WWWUSER: "${WWWUSER:-1000}"       # UID пользователя внутри контейнера
+                WWWGROUP: "${WWWGROUP:-1000}"     # GID группы внутри контейнера
         container_name: face-api
         runtime: nvidia
         deploy:

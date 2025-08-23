@@ -15,20 +15,41 @@ class ImagesCheck extends Command
         $images = Image::all();
 
         foreach ($images as $image) {
-            $imagePath = ImagePathService::getImagePath($image);
-            if (!is_file($imagePath)) {
-                $this->info('Image (ID: ' . $image->id . ') not exists: ' . $imagePath);
+            $imagePath = $image->filename
+                ? ImagePathService::getImagePath($image)
+                : null;
+
+            if (!$imagePath || !is_file($imagePath)) {
+                $this->info(sprintf(
+                    'Image (ID: %d) not exists: %s',
+                    $image->id,
+                    $imagePath ?? '[no filename]'
+                ));
             }
 
             // Some images very big (PANO_...), so debug image will be not created
-            $debugImagePath = ImagePathService::getDebugImagePath($image);
-            if (!file_exists($debugImagePath)) {
-                $this->info('Debug image (ID: ' . $image->id . ') not exists: ' . $debugImagePath);
+            $debugImagePath = $image->debug_filename
+                ? ImagePathService::getDebugImagePath($image)
+                : null;
+
+            if (!$debugImagePath || !is_file($debugImagePath)) {
+                $this->info(sprintf(
+                    'Debug image (ID: %d) not exists: %s',
+                    $image->id,
+                    $debugImagePath ?? '[no filename]'
+                ));
             }
 
-            $thumbnailPath = ImagePathService::getDefaultThumbnailPath($image);
-            if (!file_exists($thumbnailPath)) {
-                $this->info('Thumbnail image (ID: ' . $image->id . ') not exists: ' . $thumbnailPath);
+            $thumbnailPath = $image->thumbnail_filename
+                ? ImagePathService::getDefaultThumbnailPath($image)
+                : null;
+
+            if (!$thumbnailPath || !is_file($thumbnailPath)) {
+                $this->info(sprintf(
+                    'Thumbnail image (ID: %d) not exists: %s',
+                    $image->id,
+                    $thumbnailPath ?? '[no filename]'
+                ));
             }
 
             // $image->status = Image::STATUS_RECHECK;
