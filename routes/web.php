@@ -3,6 +3,7 @@
 use App\Http\Controllers\ImageController;
 use App\Http\Controllers\PhotoController;
 use App\Http\Controllers\WelcomeController;
+use App\Http\Controllers\Admin\CommandController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
@@ -20,6 +21,11 @@ Route::get('dashboard', function () {
 
 Route::get('/images', [ImageController::class, 'index'])->middleware(['auth', 'verified'])->name('images.index');
 Route::get('/photos', [PhotoController::class, 'index'])->middleware(['auth', 'verified'])->name('photos.index');
+
+Route::prefix('admin')->group(function () {
+    Route::get('/commands', [CommandController::class, 'index'])->name('admin.commands');
+    Route::get('/commands/stream', [CommandController::class, 'stream'])->name('admin.commands.stream');
+});
 
 
 /*Route::get('/faces', function () {

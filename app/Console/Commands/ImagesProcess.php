@@ -58,6 +58,10 @@ class ImagesProcess extends Command
 
         foreach ($files as $file) {
             try {
+                if (Image::where('disk', $diskLabel)->where('path', $source)->where('filename', $file)->exists()) {
+                    $this->info('Skipped file, exists: ' . $diskLabel . '//' . $source . '/' . $file);
+                    continue;
+                }
                 $this->processImage($diskLabel, $source, $file);
             } catch (\Exception $e) {
                 $this->warn('Failed to process image ' . $file . ': ' . $e->getMessage());
