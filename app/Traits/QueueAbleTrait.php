@@ -7,7 +7,7 @@ use Illuminate\Database\QueryException;
 use Illuminate\Support\Str;
 
 trait QueueAbleTrait {
-    public function pushToQueue($className, $queueName, $data) {
+    public static function pushToQueue($className, $queueName, $data) {
         $queueKey = md5(json_encode(['class' => $className]+$data));
         $objectName = explode(' ', Str::headline($className))[0]; // ImageProcessJob => Image
 
@@ -29,11 +29,9 @@ trait QueueAbleTrait {
         }
     }
 
-    public function removeFromQueue($className, $data) {
+    public static function removeFromQueue($className, $data) {
         $queueKey = md5(json_encode(['class' => $className]+$data));
         $queue = Queue::where('queue_key', hex2bin($queueKey))->first();
-        if ($queue) {
-            $queue->delete();
-        }
+        $queue?->delete();
     }
 }
