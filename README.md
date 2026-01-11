@@ -1,80 +1,49 @@
-# Images
+# Image Processing Request Flow
 
-sail artisan images:process dfotos .
-app/Console/Commands/ImagesProcess.php
-handle()
-processDirectory(string $diskLabel, string $source); // Recursive
-processImage(string $diskLabel, string $sourcePath, string $filename)
-$this->apiClient->imageProcess($requestData);
-Route::post('/image/process', [ImageProcessController::class, 'process']);
+## Overview
+This diagram shows the path of a request through the system, from the API endpoint to the final processing and queue cleanup.
 
-app/Http/Controllers/Api/ImageProcessController.php
-process(Request $request)
-ImageProcessQueue::dispatch($data)->onQueue(env('QUEUE_IMAGES'));
+```mermaid
+flowchart TD
+    Request[HTTP Request /api/image/process] --> Controller[ApiImageProcessController]
+    Controller --> Queue[Queue::push ImageProcessJob]
+    Queue --> Worker[Queue Worker]
+    Worker --> Handle[ImageProcessJob.handle]
+    Handle --> TryBlock[Try: Image::updateInsert]
+    TryBlock --> FinallyBlock[Finally: complete]
+    FinallyBlock --> RemoveQueue[QueueAbleTrait::removeFromQueue]
+```
 
-sail artisan queue:work --queue=images
-app/Jobs/ImageProcessJob.php
-Image::updateOrCreate();
+---
 
-# Thumbnails
+## Detailed Component Documentation
 
-sail artisan images:thumbnails --width=300 --height=200
-app/Console/Commands/ImagesThumbnails.php
-handle()
-createThumbnail(string $diskLabel, string $source, string $filename, int $width, int $height)
-Http::post(config('app.api_url') . '/api/thumbnail/generate', $requestData);
-$this->apiClient->thumbnailProcess($requestData);
-Route::post('/thumbnail/process', [ThumbnailProcessController::class, 'process']);
+### 1. Images
+- **Command:** `sail artisan images:process dfotos .`
+- **Controller:** `App\Http\Controllers\Api\ApiImageProcessController`
+- **Job:** `App\Jobs\ImageProcessJob`
+- **Action:** Calls `Image::updateInsert($data)` to create or update the image record.
 
-app/Http/Controllers/Api/ThumbnailProcessController.php
-process(Request $request)
-ThumbnailProcessJob::dispatch($data)->onQueue(env('QUEUE_THUMBNAILS'));
+### 2. Thumbnails
+- **Command:** `sail artisan images:thumbnails --width=300 --height=200`
+- **Controller:** `App\Http\Controllers\Api\ApiThumbnailProcessController`
+- **Job:** `App\Jobs\ThumbnailProcessJob`
+- **Action:** Generates thumbnail and updates `Image` record with path and dimensions.
 
-sail artisan queue:work --queue=thumbnails
-app/Jobs/ThumbnailProcessJob.php
-Image::update();
+### 3. Metadata
+- **Command:** `sail artisan images:metadatas`
+- **Controller:** `App\Http\Controllers\Api\ApiMetadataProcessController`
+- **Job:** `App\Jobs\MetadataProcessJob`
+- **Action:** Uses `exiftool` to extract metadata and saves it to the `Image` record.
 
-# Metadatas
+### 4. Geolocation
+- **Command:** `sail artisan images:geolocations`
+- **Controller:** `App\Http\Controllers\Api\ApiGeolocationProcessController`
+- **Job:** `App\Jobs\GeolocationProcessJob`
+- **Action:** Extracts GPS coordinates from metadata, fetches address, and saves to `ImageGeolocationPoint`.
 
-sail artisan images:metadatas
-app/Console/Commands/ImagesMetadatas.php
-handle()
-extractMetadata(int $id, string $diskLabel, string $sourcePath, string $filename)
-$this->apiClient->metadataProcess($requestData);
-Route::post('/metadata/process', [MetadataProcessController::class, 'process']);
-
-app/Http/Controllers/Api/MetadataProcessController.php
-process(Request $request)
-MetadataProcessJob::dispatch($data)->onQueue(env('QUEUE_METADATAS'));
-
-sail artisan queue:work --queue=metadatas
-app/Jobs/MetadataProcessJob.php
-Image::update();
-
-# Geolocations
-
-sail artisan images:geolocations
-app/Console/Commands/ImagesGeolocations.php
-handle()
-extractGeolocation(int $id, string $metadata)
-$this->apiClient->geolocationProcess($requestData);
-Route::post('/geolocation/process', [GeolocationProcessController::class, 'process']);
-
-app/Http/Controllers/Api/GeolocationProcessController.php
-process(Request $request)
-GeolocationProcessJob::dispatch($data)->onQueue(env('QUEUE_GEOLOCATIONS'));
-sail artisan queue:work --queue=geolocations
-
-# Faces
-
-sail artisan images:faces
-app/Console/Commands/ImagesFaces.php
-handle()
-extractFaces(int $id)
-$this->apiClient->faceProcess($requestData);
-Route::post('/face/process', [FaceProcessController::class, 'process']);
-
-app/Http/Controllers/Api/FaceProcessController.php
-process(Request $request)
-FaceProcessJob::dispatch($data)->onQueue(env('QUEUE_FACES'));
-sail artisan queue:work --queue=faces
+### 5. Faces
+- **Command:** `sail artisan images:faces`
+- **Controller:** `App\Http\Controllers\Api\ApiFaceProcessController`
+- **Job:** `App\Jobs\FaceProcessJob`
+- **Action:** Sends image to Face API, compares with known faces, and saves `Face` records.

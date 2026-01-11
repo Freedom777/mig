@@ -46,14 +46,16 @@ return [
         'strip' => false,
     ],
     'thumbnails' => [
-        'postfix' => '_thumb{width}x{height}', // Можно изменить на '_thumb' если нужно
+        'postfix' => env('THUMBNAIL_POSTFIX', '_thumb_{method}_{width}x{height}'), // Можно изменить на '_thumb' если нужно
         'width' => env('THUMBNAIL_WIDTH', 200),
         'height' => env('THUMBNAIL_HEIGHT', 200),
         'dir_format' => '{width}x{height}',
+        'method' => env('THUMBNAIL_METHOD', 'cover'),
     ],
     'paths' => [
         'root' => $storagePath,
         'images' => env('IMAGE_STORAGE_PATH', 'images'),
-        'thumbnails' => env('THUMBNAIL_STORAGE_PATH', 'thumbnails')
+        'thumbnails' => env('THUMBNAIL_STORAGE_PATH', 'thumbnails'),
+        'debug_subdir' => env('IMAGE_DEBUG_SUBDIR', 'debug'),
     ],
 ];

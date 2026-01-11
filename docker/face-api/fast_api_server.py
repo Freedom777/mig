@@ -204,3 +204,61 @@ async def compare_faces(data: CompareRequest):
     except Exception as e:
         logger.error(f"Error in compare_faces: {str(e)}", exc_info=True)
         return JSONResponse(status_code=500, content={'error': str(e)})
+
+# curl -F "file=@image1.jpg" "http://localhost:8000/hash?hash_size=16"
+#  {
+#    "hash": "abcd5678...",
+#    "hash_size": 16,
+#    "bits": 256,
+#  }
+# curl -F "file1=@image1.jpg" -F "file2=@image2.jpg" "http://localhost:8000/compare-images?hash_size=16"
+# {
+#    "hash1": "abcd1234...",
+#    "hash2": "abcd5678...",
+#    "hash_size": 16,
+#    "bits": 256,
+#    "distance": 5
+#  }
+@app.post("/hash")
+async def get_hash(
+    file: UploadFile = File(...),
+    hash_size: int = Query(8, ge=4, le=32, description="Размер хэша (по умолчанию 8)")
+):
+    """Вычислить pHash для одного изображения"""
+    try:
+        img = Image.open(file.file)
+        hash_val = str(imagehash.phash(img, hash_size=hash_size))
+        return JSONResponse(content={
+            "hash": hash_val,
+            "hash_size": hash_size,
+            "bits": hash_size * hash_size
+        })
+    except Exception as e:
+        return JSONResponse(content={"error": str(e)}, status_code=500)
+
+
+@app.post("/compare-images")
+async def compare_images(
+    file1: UploadFile = File(...),
+    file2: UploadFile = File(...),
+    hash_size: int = Query(8, ge=4, le=32, description="Размер хэша (по умолчанию 8)")
+):
+    """Сравнить два изображения по pHash"""
+    try:
+        img1 = Image.open(file1.file)
+        img2 = Image.open(file2.file)
+
+        hash1 = imagehash.phash(img1, hash_size=hash_size)
+        hash2 = imagehash.phash(img2, hash_size=hash_size)
+
+        distance = hash1 - hash2  # встроенный Hamming distance
+
+        return JSONResponse(content={
+            "hash1": str(hash1),
+            "hash2": str(hash2),
+            "hash_size": hash_size,
+            "bits": hash_size * hash_size,
+            "distance": distance
+        })
+    except Exception as e:
+        return JSONResponse(content={"error": str(e)}, status_code=500)

@@ -126,6 +126,7 @@ return [
     'api_url' =>  env('APP_API_URL', 'http://laravel.test'),
     'face_api_url' => env('FACE_API_URL', 'http://localhost:5000'),
     'image_api_url' => env('IMAGE_API_URL', 'http://localhost:8000/api'),
+    'geolocation_api_url' => env('GEOLOCATION_API_URL', 'https://nominatim.openstreetmap.org/reverse?format=json&lat={latitude}&lon={longitude}&accept-language=ru'),
     /*'api_url' => env('APP_ENV') === 'local' && (env('LARAVEL_SAIL') || file_exists('/.dockerenv'))
         ? 'http://host.docker.internal:' . env('API_PORT', '8000')
         : env('API_URL'),*/
@@ -135,4 +136,7 @@ return [
     /*'providers' => [
         ImageServiceProvider::class,
     ]*/
+
+    'whatsapp_token' => env('WHATSAPP_TOKEN', ''),
+    'whatsapp_phone_id' => env('WHATSAPP_PHONE_ID', ''),
 ];

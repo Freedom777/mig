@@ -1,39 +1,37 @@
 <script setup>
 import AppLayout from '@/layouts/AppLayout.vue'
 import { ref } from 'vue'
+import { Button } from '@/components/ui/button'
 
 const props = defineProps({
-    groups: { type: Object, default: () => ({}) }
+    groups: { type: Object, default: () => ({}), required: true, }
 })
 
 const output = ref('')
-const running = ref(false)
-let eventSource = null
+const isRunning = ref(false)
 
-const runCommand = (cmd) => {
-    if (running.value) return
-    output.value = ''
-    running.value = true
+function runCommand(command) {
+    if (isRunning.value) return
+    isRunning.value = true
+    output.value = `▶ Running: ${command}\n\n`
 
-    if (eventSource) {
-        eventSource.close()
-    }
-
-    eventSource = new EventSource(`/admin/commands/stream?command=${encodeURIComponent(cmd)}`)
+    const eventSource = new EventSource(`/admin/commands/stream?command=${encodeURIComponent(command)}`)
 
     eventSource.onmessage = (e) => {
-        output.value += e.data + '\n'
+        output.value += e.data + "\n"
     }
-
-    eventSource.addEventListener('end', () => {
-        running.value = false
-        eventSource.close()
-    })
 
     eventSource.onerror = () => {
-        running.value = false
+        output.value += "\n❌ Stream closed.\n"
+        isRunning.value = false
         eventSource.close()
     }
+
+    eventSource.addEventListener("end", () => {
+        output.value += "\n✅ Finished.\n"
+        isRunning.value = false
+        eventSource.close()
+    })
 }
 
 const buttonClass = (type) => {
@@ -55,10 +53,10 @@ const buttonClass = (type) => {
                     <button
                         v-for="cmd in commands"
                         :key="cmd.command"
+                        :disabled="isRunning"
                         class="relative px-4 py-3 rounded-xl text-white shadow-md transition flex flex-col items-start"
                         :class="buttonClass(cmd.type)"
                         @click="runCommand(cmd.command)"
-                        :disabled="running"
                     >
                         <span class="text-sm opacity-80">{{ cmd.label }}</span>
                         <span

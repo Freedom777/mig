@@ -20,10 +20,12 @@ return new class extends Migration {
 
             $table->string('path')->nullable();
             $table->string('filename');
+            $table->string('debug_filename')->nullable();
             $table->integer('width')->nullable();
             $table->integer('height')->nullable();
             $table->integer('size')->nullable(); // Filesize
             $table->binary('hash', 16); // BINARY(16) для MD5
+            $table->binary('phash', length: 8, fixed: true); // BINARY(8) для perceptual hash
             $table->dateTime('created_at_file')->nullable();
             $table->dateTime('updated_at_file')->nullable();
             $table->json('metadata')->nullable();

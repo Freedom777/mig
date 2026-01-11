@@ -85,26 +85,23 @@ class CommandController
         }
 
         return response()->stream(function () use ($command) {
-            // запускаем artisan через Symfony Process
-            $process = new Process(['php', 'artisan', $command], base_path());
+            $process = Process::fromShellCommandline("php artisan {$command}", base_path());
             $process->setTimeout(null);
-            $process->setIdleTimeout(null);
 
-            $process->start();
-
-            foreach ($process as $type => $data) {
-                echo "data: " . rtrim($data, "\n") . "\n\n";
+            $process->run(function ($type, $buffer) {
+                echo "data: " . trim($buffer) . "\n\n";
                 ob_flush();
                 flush();
-            }
+            });
 
-            echo "event: end\ndata: done\n\n";
+            echo "event: end\n";
+            echo "data: done\n\n";
             ob_flush();
             flush();
         }, 200, [
             'Content-Type' => 'text/event-stream',
             'Cache-Control' => 'no-cache',
-            'X-Accel-Buffering' => 'no', // для nginx
+            'X-Accel-Buffering' => 'no',
         ]);
     }
 }

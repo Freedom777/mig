@@ -39,7 +39,7 @@ class ApiThumbnailProcessController extends Controller
                 'thumbnail_height.min' => 'Thumbnail height must be at least 1 byte',
             ]);
 
-            return $this->pushToQueue(ThumbnailProcessJob::class, env('QUEUE_THUMBNAILS'), $data);
+            return $this->pushToQueue(ThumbnailProcessJob::class, config('queue.name.thumbnails'), $data);
         } catch (ValidationException $e) {
             return response()->json([
                 'status' => 'error',

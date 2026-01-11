@@ -5,32 +5,12 @@ namespace App\Jobs;
 use App\Models\Face;
 use App\Models\Image;
 use App\Services\ImagePathService;
-use App\Traits\QueueAbleTrait;
-use Illuminate\Bus\Queueable;
 use Illuminate\Support\Facades\Http;
-use Illuminate\Queue\SerializesModels;
-use Illuminate\Queue\InteractsWithQueue;
-use Illuminate\Contracts\Queue\ShouldQueue;
-use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
-class FaceProcessJob implements ShouldQueue
+class FaceProcessJob extends BaseProcessJob
 {
-    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels, QueueAbleTrait;
-
-    protected $taskData;
-
-    /**
-     * Create a new job instance.
-     *
-     * @return void
-     */
-    public function __construct(array $taskData)
-    {
-        $this->taskData = $taskData;
-    }
-
     /**
      * Execute the job.
      *
@@ -115,7 +95,7 @@ class FaceProcessJob implements ShouldQueue
         } catch (\Exception $e) {
             Log::error('Failed to process face: ' . $e->getMessage());
         } finally {
-            $this->removeFromQueue(self::class, $this->taskData);
+            $this->complete();
         }
     }
 }

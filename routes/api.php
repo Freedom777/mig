@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\ApiGeolocationProcessController;
 use App\Http\Controllers\Api\ApiImageController;
 use App\Http\Controllers\Api\ApiMetadataProcessController;
 use App\Http\Controllers\Api\ApiPhotoController;
+use App\Http\Controllers\Api\ApiWhatsAppController;
 use App\Models\Image;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -48,10 +49,12 @@ Route::controller(ApiImageController::class)->prefix('image')->group(function ()
     Route::get('{id}/remove', 'remove');
 
     Route::patch('{id}/status', 'status');
+
+    Route::post('new-upload', 'newUpload');
 });
 
 Route::get('/photos/year-counts', function () {
-    $counts = Image::selectRaw("YEAR(updated_at_file) as year, count(*) as count")
+    $counts = Image::selectRaw('YEAR(updated_at_file) as year, count(*) as count')
         ->groupBy(DB::raw('YEAR(updated_at_file)'))
         ->orderBy('year')
         ->pluck('count', 'year')
@@ -67,3 +70,5 @@ Route::get('/photos/date-available', function () {
         ->get()
         ->map(fn($row) => ['date' => $row->ym, 'count' => $row->count]);
 });
+
+Route::get('/whatsapp/msg', [ApiWhatsAppController::class, 'msg']);

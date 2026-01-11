@@ -6,6 +6,9 @@ use App\Models\Image;
 use App\Services\ApiClient;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Storage;
+use Jenssegers\ImageHash\ImageHash;
+use Jenssegers\ImageHash\Implementations\PerceptualHash;
+
 
 class ImagesProcess extends Command
 {
@@ -88,29 +91,7 @@ class ImagesProcess extends Command
 
     private function processImage(string $diskLabel, string $sourcePath, string $filename)
     {
-        $disk = Storage::disk($diskLabel);
-        $filePath = $disk->path($sourcePath) . '/' . $filename;
-
-        $md5 = md5_file($filePath);
-
-        $imagedata = getimagesize($filePath);
-
-        // Проверяем, есть ли уже такое изображение в базе
-        $duplicateId = Image::where('hash', $md5)->value('id');
-
-        $requestData = [
-            'parent_id' => $duplicateId,
-            'source_disk' => $diskLabel,
-            'source_path' => $sourcePath,
-            'source_filename' => $filename,
-            'width' => $imagedata[0],
-            'height' => $imagedata[1],
-            'size' => filesize($filePath),
-            'hash' => $md5,
-            'created_at_file' => date('Y-m-d H:i:s', filectime($filePath)),
-            'updated_at_file' => date('Y-m-d H:i:s', filemtime($filePath)),
-        ];
-
+        $requestData = Image::prepareData($diskLabel, $sourcePath, $filename);
         $diskPath = $diskLabel . '://' . $sourcePath . '/' . $filename;
         try {
             $response = $this->apiClient->imageProcess($requestData);

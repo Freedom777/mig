@@ -25,7 +25,7 @@ class ApiGeolocationProcessController extends Controller
                 'metadata.required' => 'Metadata is required',
             ]);
 
-            return $this->pushToQueue(GeolocationProcessJob::class, env('QUEUE_GEOLOCATIONS'), $data);
+            return self::pushToQueue(GeolocationProcessJob::class, config('queue.name.geolocations'), $data);
         } catch (ValidationException $e) {
             return response()->json([
                 'status' => 'error',

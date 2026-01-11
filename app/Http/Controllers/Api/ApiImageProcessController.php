@@ -50,7 +50,7 @@ class ApiImageProcessController extends Controller
                 'parent_id.exists' => 'Duplicate with ID provided not found in database.',
             ]);
 
-            return $this->pushToQueue(ImageProcessJob::class, env('QUEUE_IMAGES'), $data);
+            return self::pushToQueue(ImageProcessJob::class, config('queue.name.images'), $data);
         } catch (ValidationException $e) {
             return response()->json([
                 'status' => 'error',

@@ -5,12 +5,6 @@ namespace App\Jobs;
 use App\Models\Image;
 use App\Models\ImageGeolocationAddress;
 use App\Models\ImageGeolocationPoint;
-use App\Traits\QueueAbleTrait;
-use Illuminate\Bus\Queueable;
-use Illuminate\Queue\SerializesModels;
-use Illuminate\Queue\InteractsWithQueue;
-use Illuminate\Contracts\Queue\ShouldQueue;
-use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -18,22 +12,8 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use MatanYadaev\EloquentSpatial\Objects\Point;
 
-class GeolocationProcessJob implements ShouldQueue
+class GeolocationProcessJob extends BaseProcessJob
 {
-    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels, QueueAbleTrait;
-
-    protected array $taskData;
-
-    /**
-     * Create a new job instance.
-     *
-     * @return void
-     */
-    public function __construct(array $taskData)
-    {
-        $this->taskData = $taskData;
-    }
-
     /**
      * Execute the job.
      *
@@ -79,14 +59,14 @@ class GeolocationProcessJob implements ShouldQueue
             } catch (\Exception $e) {
                 throw new \Exception('Failed to process geolocation: ' . $e->getMessage());
             } finally {
-                $this->removeFromQueue(self::class, $this->taskData);
+                $this->complete();
             }
         });
     }
 
     private function getAddressId(float $latitude, float $longitude): false|int
     {
-        $locUrl = Str::of(env('GEOLOCATION_URL'))
+        $locUrl = Str::of(config('app.geolocation_api_url'))
             ->replace('{latitude}', $latitude)
             ->replace('{longitude}', $longitude)
             ->__toString();

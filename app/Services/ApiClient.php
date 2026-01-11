@@ -13,44 +13,21 @@ class ApiClient
         $this->baseUrl = rtrim(config('app.api_url'), '/');
     }
 
-    /**
-     * @throws \Exception
-     */
-    public function imageProcess(array $data)
-    {
-        return $this->post('/api/image/process', $data);
-    }
+    public function __call($method, $parameters) {
+        if (!str_ends_with($method, 'Process')) {
+            throw new \BadMethodCallException('Undefined method: ' . $method);
+        }
 
-    /**
-     * @throws \Exception
-     */
-    public function thumbnailProcess(array $data)
-    {
-        return $this->post('/api/thumbnail/process', $data);
-    }
+        if (!isset($parameters[0]) || !is_array($parameters[0])) {
+            throw new \InvalidArgumentException(
+                sprintf('Method %s expects array as first argument', $method)
+            );
+        }
 
-    /**
-     * @throws \Exception
-     */
-    public function metadataProcess(array $data)
-    {
-        return $this->post('/api/metadata/process', $data);
-    }
+        $resource = substr($method, 0, -7);
+        $apiCall = '/api/' . $resource . '/process';
 
-    /**
-     * @throws \Exception
-     */
-    public function geolocationProcess(array $data)
-    {
-        return $this->post('/api/geolocation/process', $data);
-    }
-
-    /**
-     * @throws \Exception
-     */
-    public function faceProcess(array $data)
-    {
-        return $this->post('/api/face/process', $data);
+        return $this->post($apiCall, $parameters[0]);
     }
 
     protected function post(string $uri, array $data)

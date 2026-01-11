@@ -122,4 +122,12 @@ return [
         'table' => 'failed_jobs',
     ],
 
+    'name' => [
+        'images' => env('QUEUE_IMAGES', 'images'),
+        'thumbnails' => env('QUEUE_THUMBNAILS', 'thumbnails'),
+        'metadatas' => env('QUEUE_METADATAS', 'metadatas'),
+        'geolocations' => env('QUEUE_GEOLOCATIONS', 'geolocations'),
+        'faces' => env('QUEUE_FACES', 'faces'),
+    ]
+
 ];

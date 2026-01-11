@@ -13,11 +13,9 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Symfony\Component\Process\Process;
 
-class MetadataProcessJob implements ShouldQueue
+class MetadataProcessJob extends BaseProcessJob
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels, QueueAbleTrait;
-
-    protected array $taskData;
 
     /**
      * Create a new job instance.
@@ -59,7 +57,7 @@ class MetadataProcessJob implements ShouldQueue
         } catch (\Exception $e) {
             Log::error('Failed to process metadata from image ' . $sourcePath . ': ' . $e->getMessage());
         } finally {
-            $this->removeFromQueue(self::class, $this->taskData);
+            $this->complete();
         }
     }
 }

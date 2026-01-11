@@ -16,7 +16,7 @@ class ImagePathService
     }
 
     public static function getImageDebugSubdir() {
-        return env('IMAGE_DEBUG_SUBDIR');
+        return config('image.paths.debug_subdir');
     }
 
     public static function getImagePath(Image $image) {
@@ -48,7 +48,7 @@ class ImagePathService
 
     public static function getThumbnailFilename(string $filename, string $method, int $width, int $height): string
     {
-        $postfix = Str::of(env('THUMBNAIL_POSTFIX'))
+        $postfix = Str::of(config('image.thumbnails.postfix'))
             ->replace('{method}', $method)
             ->replace('{width}', $width)
             ->replace('{height}', $height)
@@ -62,8 +62,8 @@ class ImagePathService
     {
         return Storage::disk($image->disk)->path(
             $image->path . '/' .
-            self::getThumbnailSubdir(env('THUMBNAIL_WIDTH'), env('THUMBNAIL_HEIGHT')) . '/' .
-            self::getThumbnailFilename($image->filename, env('THUMBNAIL_METHOD'), env('THUMBNAIL_WIDTH'), env('THUMBNAIL_HEIGHT'))
+            self::getThumbnailSubdir(config('image.thumbnails.width'), config('image.thumbnails.height')) . '/' .
+            self::getThumbnailFilename($image->filename, config('image.thumbnails.method'), config('image.thumbnails.width'), config('image.thumbnails.height'))
         );
     }
 ///////////////////////////////////////////

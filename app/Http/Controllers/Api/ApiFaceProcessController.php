@@ -23,7 +23,7 @@ class ApiFaceProcessController extends Controller
                 'image_id.min' => 'Image ID must be at least 1 byte',
             ]);
 
-            return $this->pushToQueue(FaceProcessJob::class, env('QUEUE_FACES'), $data);
+            return self::pushToQueue(FaceProcessJob::class, config('queue.name.faces'), $data);
         } catch (ValidationException $e) {
             return response()->json([
                 'status' => 'error',

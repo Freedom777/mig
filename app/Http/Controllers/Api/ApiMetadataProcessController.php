@@ -29,7 +29,7 @@ class ApiMetadataProcessController extends Controller
                 'source_filename.required' => 'Source filename is required',
             ]);
 
-            return $this->pushToQueue(MetadataProcessJob::class, env('QUEUE_METADATAS'), $data);
+            return self::pushToQueue(MetadataProcessJob::class, config('queue.name.metadatas'), $data);
         } catch (ValidationException $e) {
             return response()->json([
                 'status' => 'error',

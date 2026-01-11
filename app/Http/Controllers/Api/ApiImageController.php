@@ -4,6 +4,8 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Image;
+use App\Services\ApiClient;
+use App\Services\ImagePathService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
@@ -117,5 +119,109 @@ class ApiImageController extends Controller
             'status' => Image::STATUS_OK
         ]);
     }
+
+
+    // New upload from ftp - image process needed
+    public function newUpload(Request $request) : JsonResponse {
+        $filename = $request->input('filename');
+        \Log::info('Filename: ' . $filename);
+        $path = 'images'; // config('ftp.path');
+        $preparedData = Image::prepareData('local', $path, $filename);
+
+        $image = Image::updateInsert($preparedData);
+
+        if (!$image) {
+            \Log::error('Failed to insert image: ' . $filename);
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Failed to insert image'
+            ], 500);
+        }
+
+        \Log::info('Image inserted, queue started');
+
+        $apiClient = app(ApiClient::class);
+
+        // Queue thumbnail processing
+        \Log::info('Queue start ' . 'thumbnail process');
+        try {
+            $thumbWidth = config('images.thumbnails.width', 300);
+            $thumbHeight = config('images.thumbnails.height', 200);
+            $thumbMethod = config('images.thumbnails.method', 'cover');
+            $thumbPath = ImagePathService::getThumbnailSubdir($thumbWidth, $thumbHeight);
+            $thumbFilename = ImagePathService::getThumbnailFilename($filename, $thumbMethod, $thumbWidth, $thumbHeight);
+
+            $response = $apiClient->thumbnailProcess([
+                'disk' => $preparedData['source_disk'],
+                'source_path' => $preparedData['source_path'],
+                'source_filename' => $preparedData['source_filename'],
+                'thumbnail_path' => $thumbPath,
+                'thumbnail_filename' => $thumbFilename,
+                'thumbnail_method' => $thumbMethod,
+                'thumbnail_width' => $thumbWidth,
+                'thumbnail_height' => $thumbHeight,
+            ]);
+
+            if (!$response->successful()) {
+                \Log::error('Thumbnail process API error: ' . $response->body());
+            }
+        } catch (\Exception $e) {
+            \Log::error('Failed to queue thumbnail process: ' . $e->getMessage());
+        }
+
+        // Queue metadata processing
+        \Log::info('Queue start ' . 'metadata process');
+        try {
+            $response = $apiClient->metadataProcess([
+                'image_id' => $image->id,
+                'source_disk' => $preparedData['source_disk'],
+                'source_path' => $preparedData['source_path'],
+                'source_filename' => $preparedData['source_filename'],
+            ]);
+
+            if (!$response->successful()) {
+                \Log::error('Metadata process API error: ' . $response->body());
+            }
+        } catch (\Exception $e) {
+            \Log::error('Failed to queue metadata process: ' . $e->getMessage());
+        }
+
+        // Queue geolocation processing (note: this requires metadata to be processed first)
+        \Log::info('Queue start ' . 'geolocation process');
+        try {
+            // For geolocation, we need to pass the metadata as a string
+            // Since metadata might not be available yet, we'll pass an empty string
+            // The job will handle fetching the metadata from the database
+            $response = $apiClient->geolocationProcess([
+                'image_id' => $image->id,
+                'metadata' => '', // Will be fetched by the job
+            ]);
+
+            if (!$response->successful()) {
+                \Log::error('Geolocation process API error: ' . $response->body());
+            }
+        } catch (\Exception $e) {
+            \Log::error('Failed to queue geolocation process: ' . $e->getMessage());
+        }
+
+        \Log::info('Queue end, status OK');
+
+        return response()->json([
+            'status' => Image::STATUS_OK
+        ]);
+    }
+
+    /*
+        \Log::info('Image inserted, queue started');
+        \Log::info('Queue start ' . 'images:thumbnails');
+        $exitCode = Artisan::call('images:thumbnails', [
+            '--width' => 300, '--height' => 200
+        ]);
+        \Log::info('Queue start ' . 'images:metadatas');
+        $exitCode = Artisan::call('images:metadatas');
+        \Log::info('Queue start ' . 'images:geolocations');
+        $exitCode = Artisan::call('images:geolocations');
+        \Log::info('Queue end, status OK');
+    */
 
 }

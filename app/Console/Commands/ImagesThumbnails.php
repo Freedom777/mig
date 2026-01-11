@@ -32,8 +32,8 @@ class ImagesThumbnails extends Command
 
         foreach ($images as $image) {
             $diskLabel = $image->disk;
-            $thumbWidth = $this->option('width') ?? env('THUMBNAIL_WIDTH');
-            $thumbHeight = $this->option('height')  ?? env('THUMBNAIL_HEIGHT');
+            $thumbWidth = $this->option('width') ?? config('images.thumbnails.width');
+            $thumbHeight = $this->option('height')  ?? config('images.thumbnails.height');
             $thumbPath = ImagePathService::getThumbnailSubdir($thumbWidth, $thumbHeight);
             $thumbFullPath = $image->path . '/' . $thumbPath;
 
@@ -55,7 +55,7 @@ class ImagesThumbnails extends Command
                 $image->filename,
                 $thumbWidth,
                 $thumbHeight,
-                $this->option('method')  ?? env('THUMBNAIL_METHOD'),
+                $this->option('method')  ?? config('images.thumbnails.method'),
             );
         }
     }

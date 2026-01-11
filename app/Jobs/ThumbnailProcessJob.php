@@ -3,34 +3,14 @@
 namespace App\Jobs;
 
 use App\Models\Image;
-use App\Traits\QueueAbleTrait;
-use Illuminate\Bus\Queueable;
 use Illuminate\Support\Facades\Storage;
-use Illuminate\Queue\SerializesModels;
-use Illuminate\Queue\InteractsWithQueue;
-use Illuminate\Contracts\Queue\ShouldQueue;
-use Illuminate\Foundation\Bus\Dispatchable;
 use Intervention\Image\ImageManager;
 use Intervention\Image\Drivers\Imagick\Driver;
 use Illuminate\Support\Facades\Log;
 
 
-class ThumbnailProcessJob implements ShouldQueue
+class ThumbnailProcessJob extends BaseProcessJob
 {
-    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels, QueueAbleTrait;
-
-    protected $taskData;
-
-    /**
-     * Create a new job instance.
-     *
-     * @return void
-     */
-    public function __construct(array $taskData)
-    {
-        $this->taskData = $taskData;
-    }
-
     /**
      * Execute the job.
      *
@@ -69,7 +49,7 @@ class ThumbnailProcessJob implements ShouldQueue
         } catch (\Exception $e) {
             Log::error('Failed to process thumbnail: ' . $e->getMessage());
         } finally {
-            $this->removeFromQueue(self::class, $this->taskData);
+            $this->complete();
         }
     }
 }
