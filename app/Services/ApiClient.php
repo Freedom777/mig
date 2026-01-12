@@ -3,7 +3,15 @@
 namespace App\Services;
 
 use Illuminate\Support\Facades\Http;
+use Illuminate\Http\Client\Response;
 
+/**
+ * @method Response imageProcess(array $data)
+ * @method Response thumbnailProcess(array $data)
+ * @method Response metadataProcess(array $data)
+ * @method Response geolocationProcess(array $data)
+ * @method Response faceProcess(array $data)
+ */
 class ApiClient
 {
     protected string $baseUrl;
@@ -30,7 +38,7 @@ class ApiClient
         return $this->post($apiCall, $parameters[0]);
     }
 
-    protected function post(string $uri, array $data)
+    protected function post(string $uri, array $data) : Response
     {
         $response = Http::withHeaders([
             'User-Agent' => 'MyApp/1.0'

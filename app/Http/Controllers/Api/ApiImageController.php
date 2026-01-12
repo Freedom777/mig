@@ -187,7 +187,7 @@ class ApiImageController extends Controller
         }
 
         // Queue geolocation processing (note: this requires metadata to be processed first)
-        \Log::info('Queue start ' . 'geolocation process');
+        /*\Log::info('Queue start ' . 'geolocation process');
         try {
             // For geolocation, we need to pass the metadata as a string
             // Since metadata might not be available yet, we'll pass an empty string
@@ -202,7 +202,7 @@ class ApiImageController extends Controller
             }
         } catch (\Exception $e) {
             \Log::error('Failed to queue geolocation process: ' . $e->getMessage());
-        }
+        }*/
 
         \Log::info('Queue end, status OK');
 

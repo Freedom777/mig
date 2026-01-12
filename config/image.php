@@ -53,6 +53,7 @@ return [
         'method' => env('THUMBNAIL_METHOD', 'cover'),
     ],
     'paths' => [
+        'disk' => env('IMAGE_STORAGE_DISK', 'local'),
         'root' => $storagePath,
         'images' => env('IMAGE_STORAGE_PATH', 'images'),
         'thumbnails' => env('THUMBNAIL_STORAGE_PATH', 'thumbnails'),
