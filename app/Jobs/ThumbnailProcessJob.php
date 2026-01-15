@@ -62,7 +62,15 @@ class ThumbnailProcessJob extends BaseProcessJob
         // Создаем директорию для thumbnails если её нет
         if (!$disk->exists($targetDir)) {
             $disk->makeDirectory($targetDir);
-            Log::info('Created thumbnail directory', ['path' => $targetDir]);
+
+            // Устанавливаем права 755 (rwxr-xr-x)
+            $fullTargetDirPath = $disk->path($targetDir);
+            chmod($fullTargetDirPath, 0755);
+
+            Log::info('Created thumbnail directory with proper permissions', [
+                'path' => $targetDir,
+                'full_path' => $fullTargetDirPath
+            ]);
         }
 
         $targetPath = $disk->path(
@@ -96,6 +104,14 @@ class ThumbnailProcessJob extends BaseProcessJob
             );
 
             $image->save($targetPath);
+
+            // Проверяем, что файл действительно создан
+            if (!file_exists($targetPath)) {
+                throw new \RuntimeException('Thumbnail file was not created: ' . $targetPath);
+            }
+
+            // Устанавливаем права на файл
+            chmod($targetPath, 0644);
 
             Log::info('Thumbnail created successfully', [
                 'image_id' => $this->taskData['image_id'],
