@@ -21,6 +21,19 @@ class ApiClient
         $this->baseUrl = rtrim(config('app.api_url'), '/');
     }
 
+    /**
+     * @param $method
+     * @param $parameters
+     * @return Response
+     *
+     * Routes:
+     * /api/image/push
+     * /api/thumbnail/push
+     * /api/metadata/push
+     * /api/geolocation/push
+     * /api/face/push
+     */
+    // Routes /api/.../push
     public function __call($method, $parameters) {
         if (!str_ends_with($method, 'Process')) {
             throw new \BadMethodCallException('Undefined method: ' . $method);
@@ -33,7 +46,7 @@ class ApiClient
         }
 
         $resource = substr($method, 0, -7);
-        $apiCall = '/api/' . $resource . '/process';
+        $apiCall = route($resource . '.' . 'push');
 
         return $this->post($apiCall, $parameters[0]);
     }

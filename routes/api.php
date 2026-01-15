@@ -1,19 +1,19 @@
 <?php
 
 use App\Http\Controllers\Api\ApiFaceController;
-use App\Http\Controllers\Api\ApiFaceProcessController;
 use App\Http\Controllers\Api\ApiFilterController;
-use App\Http\Controllers\Api\ApiGeolocationProcessController;
-use App\Http\Controllers\Api\ApiImageController;
-use App\Http\Controllers\Api\ApiMetadataProcessController;
+use App\Http\Controllers\Api\ApiImageActionController;
 use App\Http\Controllers\Api\ApiPhotoController;
 use App\Http\Controllers\Api\ApiWhatsAppController;
+use App\Http\Controllers\Api\PushQueue\FaceQueuePushApiController;
+use App\Http\Controllers\Api\PushQueue\GeolocationQueuePushApiController;
+use App\Http\Controllers\Api\PushQueue\ImageQueuePushApiController;
+use App\Http\Controllers\Api\PushQueue\MetadataQueuePushApiController;
+use App\Http\Controllers\Api\PushQueue\ThumbnailQueuePushApiController;
 use App\Models\Image;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
-use App\Http\Controllers\Api\ApiImageProcessController;
-use App\Http\Controllers\Api\ApiThumbnailProcessController;
 
 Route::get('/user', function (Request $request) {
     return $request->user();
@@ -24,16 +24,16 @@ Route::get('/photos', [ApiPhotoController::class, 'index']);
 Route::post('/photos', [ApiPhotoController::class, 'index']);
 Route::get('/filters', [ApiFilterController::class, 'index']);
 
-Route::get('/thumbnail/{id}.jpg', [ApiImageController::class, 'showThumbnail']);
+Route::get('/thumbnail/{id}.jpg', [ApiImageActionController::class, 'showThumbnail']);
 
 // Группа для API с префиксом и middleware (например, для авторизации)
 // Route::middleware(['api', 'auth:sanctum'])->group(function () {
-    // Обработка изображений
-    Route::post('/image/process', [ApiImageProcessController::class, 'process']);
-    Route::post('/thumbnail/process', [ApiThumbnailProcessController::class, 'process']);
-    Route::post('/metadata/process', [ApiMetadataProcessController::class, 'process']);
-    Route::post('/geolocation/process', [ApiGeolocationProcessController::class, 'process']);
-    Route::post('/face/process', [ApiFaceProcessController::class, 'process']);
+    // Queue objects push
+    Route::post('/image/push', [ImageQueuePushApiController::class, 'process'])->name('image.push');
+    Route::post('/thumbnail/push', [ThumbnailQueuePushApiController::class, 'process'])->name('thumbnail.push');;
+    Route::post('/metadata/push', [MetadataQueuePushApiController::class, 'process'])->name('metadata.push');
+    Route::post('/geolocation/push', [GeolocationQueuePushApiController::class, 'process'])->name('geolocation.push');
+    Route::post('/face/push', [FaceQueuePushApiController::class, 'process'])->name('face.push');
 // });
 
 Route::controller(ApiFaceController::class)->prefix('face')->group(function () {
@@ -42,7 +42,7 @@ Route::controller(ApiFaceController::class)->prefix('face')->group(function () {
     Route::delete('remove', 'remove');
 });
 
-Route::controller(ApiImageController::class)->prefix('image')->group(function () {
+Route::controller(ApiImageActionController::class)->prefix('image')->group(function () {
     Route::get('{id}/nearby', 'nearby');
     Route::get('debug/{id}.jpg', 'showDebugImage');
     Route::get('{id}.jpg', 'show');

@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Http\Controllers\Api;
+namespace App\Http\Controllers\Api\PushQueue;
 
 use App\Http\Controllers\Controller;
 use App\Jobs\FaceProcessJob;
@@ -8,7 +8,7 @@ use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
 use App\Traits\QueueAbleTrait;
 
-class ApiFaceProcessController extends Controller
+class FaceQueuePushApiController extends Controller
 {
     use QueueAbleTrait;
 

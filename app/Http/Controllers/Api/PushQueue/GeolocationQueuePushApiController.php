@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Http\Controllers\Api;
+namespace App\Http\Controllers\Api\PushQueue;
 
 use App\Http\Controllers\Controller;
 use App\Jobs\GeolocationProcessJob;
@@ -8,7 +8,7 @@ use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
 use App\Traits\QueueAbleTrait;
 
-class ApiGeolocationProcessController extends Controller
+class GeolocationQueuePushApiController extends Controller
 {
     use QueueAbleTrait;
 
