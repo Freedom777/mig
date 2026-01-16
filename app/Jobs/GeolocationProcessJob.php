@@ -14,22 +14,29 @@ use MatanYadaev\EloquentSpatial\Objects\Point;
 
 class GeolocationProcessJob extends BaseProcessJob
 {
-    public function handle() {
-        // Используем более надежный lock на основе image_id
+    /**
+     * Rate limit для Nominatim API (1 запрос в секунду)
+     */
+    private const NOMINATIM_RATE_LIMIT_SECONDS = 2;
+
+    public function handle()
+    {
         $lockKey = 'geolocation-processing:' . $this->taskData['image_id'];
-        $lock = Cache::lock($lockKey, 10); // 10 секунд
+        $lock = Cache::lock($lockKey, 10);
 
         try {
             $lock->block(10, function () {
                 $this->processGeolocation();
             });
         } catch (\Illuminate\Contracts\Cache\LockTimeoutException $e) {
-            Log::warning('Could not acquire lock for geolocation processing: ' . $this->taskData['image_id']);
-            // Можно сделать release для retry
-            $this->release(30); // Повторить через 30 секунд
-        } catch (\Exception $e) {
-            Log::error('Geolocation processing failed: ' . $e->getMessage(), [
+            Log::warning('Could not acquire lock for geolocation processing', [
                 'image_id' => $this->taskData['image_id']
+            ]);
+            $this->release(30);
+        } catch (\Exception $e) {
+            Log::error('Geolocation processing failed', [
+                'image_id' => $this->taskData['image_id'],
+                'error' => $e->getMessage()
             ]);
             throw $e;
         } finally {
@@ -37,26 +44,27 @@ class GeolocationProcessJob extends BaseProcessJob
         }
     }
 
-    private function processGeolocation() {
+    private function processGeolocation()
+    {
         $metadata = json_decode($this->taskData['metadata'], true);
 
         if (!$metadata) {
             throw new \Exception('Invalid metadata JSON');
         }
 
-        // Извлекаем координаты
         [$latitude, $longitude] = $this->extractCoordinates($metadata);
 
         $pointLatLon = new Point($latitude, $longitude);
 
-        // Ищем существующую точку
         $point = ImageGeolocationPoint::where('coordinates', $pointLatLon)->first();
 
         if (!$point) {
-            // Ищем адрес, чей bounding box содержит эту точку
             $addressId = ImageGeolocationAddress::whereContains('osm_area', $pointLatLon)->value('id');
 
             if (!$addressId) {
+                // Соблюдаем rate limit перед вызовом API
+                $this->waitForRateLimit();
+
                 $addressId = $this->getAddressId($latitude, $longitude);
                 if (!$addressId) {
                     throw new \Exception('Failed to get address from Nominatim API');
@@ -74,7 +82,6 @@ class GeolocationProcessJob extends BaseProcessJob
             ]);
         }
 
-        // Обновляем изображение
         Image::where('id', $this->taskData['image_id'])
             ->update(['image_geolocation_point_id' => $point->id]);
 
@@ -82,9 +89,32 @@ class GeolocationProcessJob extends BaseProcessJob
     }
 
     /**
-     * Извлекает координаты из метадаты
+     * Ожидает перед вызовом Nominatim API для соблюдения rate limit
      */
-    private function extractCoordinates(array $metadata): array {
+    private function waitForRateLimit(): void
+    {
+        $lockKey = 'nominatim-api-rate-limit';
+        $lastCallTime = Cache::get($lockKey);
+
+        if ($lastCallTime) {
+            $timeSinceLastCall = microtime(true) - $lastCallTime;
+            $waitTime = self::NOMINATIM_RATE_LIMIT_SECONDS - $timeSinceLastCall;
+
+            if ($waitTime > 0) {
+                $waitMicroseconds = (int)($waitTime * 1000000);
+                Log::debug('Waiting for Nominatim rate limit', [
+                    'wait_seconds' => round($waitTime, 3)
+                ]);
+                usleep($waitMicroseconds);
+            }
+        }
+
+        // Сохраняем время последнего вызова
+        Cache::put($lockKey, microtime(true), 5); // TTL 5 секунд
+    }
+
+    private function extractCoordinates(array $metadata): array
+    {
         if (isset($metadata['GPSLatitude']) && isset($metadata['GPSLongitude'])) {
             return [
                 (float) $metadata['GPSLatitude'],
@@ -105,7 +135,8 @@ class GeolocationProcessJob extends BaseProcessJob
         throw new \Exception('No valid GPS coordinates found in metadata');
     }
 
-    private function getAddressId(float $latitude, float $longitude): false|int {
+    private function getAddressId(float $latitude, float $longitude): false|int
+    {
         $locUrl = Str::of(config('app.geolocation_api_url'))
             ->replace('{latitude}', $latitude)
             ->replace('{longitude}', $longitude)
@@ -113,14 +144,15 @@ class GeolocationProcessJob extends BaseProcessJob
 
         try {
             $response = Http::timeout(10)
-                ->retry(3, 1000) // 3 попытки с задержкой 1 секунда
+                ->retry(3, 2000) // 3 попытки с задержкой 2 секунды между ними
                 ->withHeaders(['User-Agent' => 'MyGeocodingApp/1.0'])
                 ->get($locUrl);
 
             if (!$response->ok()) {
                 Log::error('Nominatim API request failed', [
                     'status' => $response->status(),
-                    'url' => $locUrl
+                    'url' => $locUrl,
+                    'body' => $response->body()
                 ]);
                 return false;
             }
@@ -134,7 +166,7 @@ class GeolocationProcessJob extends BaseProcessJob
                 return false;
             }
 
-            // Проверяем, может адрес уже существует по osm_id
+            // Проверяем существующий адрес по osm_id
             $existingAddress = ImageGeolocationAddress::where('osm_id', $addressAr['osm_id'])->first();
             if ($existingAddress) {
                 Log::info('Using existing address', ['address_id' => $existingAddress->id]);
@@ -152,18 +184,17 @@ class GeolocationProcessJob extends BaseProcessJob
         }
     }
 
-    private function saveAddress(array $addressAr): false|int {
-        // boundingbox: [lat_min, lat_max, lon_min, lon_max]
+    private function saveAddress(array $addressAr): false|int
+    {
         [$latMin, $latMax, $lonMin, $lonMax] = array_map('floatval', $addressAr['boundingbox']);
 
-        // Построение полигона (WKT) в порядке lon lat (X Y)
         $polygonWkt = sprintf(
             'POLYGON((%f %f, %f %f, %f %f, %f %f, %f %f))',
-            $lonMin, $latMin,  // нижний левый
-            $lonMin, $latMax,  // верхний левый
-            $lonMax, $latMax,  // верхний правый
-            $lonMax, $latMin,  // нижний правый
-            $lonMin, $latMin   // замыкаем
+            $lonMin, $latMin,
+            $lonMin, $latMax,
+            $lonMax, $latMax,
+            $lonMax, $latMin,
+            $lonMin, $latMin
         );
 
         try {
@@ -189,42 +220,3 @@ class GeolocationProcessJob extends BaseProcessJob
         }
     }
 }
-
-
-// https://nominatim.openstreetmap.org/reverse?format=json&lat=48.207177&lon=16.3619444&accept-language=ru
-/*
-
-{
-  "place_id": 174327029,
-  "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
-  "osm_type": "way",
-  "osm_id": 295108420,
-  "lat": "48.2069523",
-  "lon": "16.3619480",
-  "class": "amenity",
-  "type": "parking",
-  "place_rank": 30,
-  "importance": 0.000086942092011856,
-  "addresstype": "amenity",
-  "name": "",
-  "display_name": "Ballhausplatz, Regierungsviertel, Innere Stadt, Wien, Вена, 1010, Австрия",
-  "address": {
-    "road": "Ballhausplatz",
-    "neighbourhood": "Regierungsviertel",
-    "suburb": "Innere Stadt",
-    "city_district": "Wien",
-    "city": "Вена",
-    "ISO3166-2-lvl4": "AT-9",
-    "postcode": "1010",
-    "country": "Австрия",
-    "country_code": "at"
-  },
-  "boundingbox": [
-    "48.2063881",
-    "48.2078931",
-    "16.3610222",
-    "16.3636037"
-  ]
-}
-
- */
