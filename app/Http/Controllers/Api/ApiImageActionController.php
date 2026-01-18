@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Jobs\BaseProcessJob;
+use App\Jobs\FaceProcessJob;
 use App\Jobs\MetadataProcessJob;
 use App\Jobs\ThumbnailProcessJob;
 use App\Models\Image;
@@ -207,7 +208,7 @@ class ApiImageActionController extends Controller
 
             $response = BaseProcessJob::pushToQueue(
                 ThumbnailProcessJob::class,
-                'thumbnails',
+                config('queue.name.thumbnails'),
                 [
                     'image_id' => $image->id,
                     'disk' => $preparedData['source_disk'],
@@ -242,7 +243,7 @@ class ApiImageActionController extends Controller
         try {
             $response = BaseProcessJob::pushToQueue(
                 MetadataProcessJob::class,
-                'metadata',
+                config('queue.name.metadatas'),
                 [
                     'image_id' => $image->id,
                     'source_disk' => $preparedData['source_disk'],
@@ -273,8 +274,8 @@ class ApiImageActionController extends Controller
         // 3. Queue Face Processing
         try {
             $response = BaseProcessJob::pushToQueue(
-                MetadataProcessJob::class,
-                'metadata',
+                FaceProcessJob::class,
+                config('queue.name.faces'),
                 [
                     'image_id' => $image->id,
                     /*'source_disk' => $preparedData['source_disk'],

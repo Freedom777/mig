@@ -114,7 +114,7 @@ class MetadataProcessJob extends BaseProcessJob
             // Если успешно - запускаем через chain для атомарности
             Bus::chain([
                 new GeolocationProcessJob($jobData)
-            ])->onQueue('geolocation')->dispatch();
+            ])->onQueue(config('queue.name.metadatas'))->dispatch();
 
             Log::info('Geolocation job queued for image ' . $this->taskData['image_id']);
 
