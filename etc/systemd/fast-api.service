@@ -6,7 +6,7 @@ Documentation=file:///var/www/photo/etc/face-api/README.md
 [Service]
 Type=notify
 User=www-data
-Group=www-data
+Group=web
 WorkingDirectory=/var/www/photo/etc/face-api
 Environment="PATH=/var/www/photo/face-api-venv/bin"
 ExecStart=/var/www/photo/face-api-venv/bin/gunicorn server:app \
@@ -18,6 +18,9 @@ ExecStart=/var/www/photo/face-api-venv/bin/gunicorn server:app \
     --access-logfile /var/www/photo/storage/logs/face-api-access.log \
     --error-logfile /var/www/photo/storage/logs/face-api-error.log \
     --log-level info
+
+# Создаем файлы с правильной группой
+UMask=0002
 
 Restart=always
 RestartSec=10

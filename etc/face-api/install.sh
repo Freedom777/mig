@@ -25,7 +25,7 @@ cd "$PROJECT_ROOT"
 python3 -m venv "$VENV_PATH"
 source "$VENV_PATH/bin/activate"
 
-# ✅ ВАЖНО: Сначала обновляем pip и ставим packaging
+# ✅ Устанавливаем packaging перед dlib
 pip install --upgrade pip setuptools wheel packaging
 
 # 3. Build dlib (CPU-only)
@@ -36,11 +36,9 @@ cd dlib && mkdir -p build && cd build
 cmake .. -DUSE_AVX_INSTRUCTIONS=1
 cmake --build . --config Release
 
-# ✅ Возвращаемся в директорию dlib (не build) и устанавливаем
 cd ..
 python3 setup.py install
 
-# Очистка
 cd /tmp && rm -rf dlib
 
 # 4. Install Python packages
@@ -53,8 +51,20 @@ pip install opencv-python-headless
 # 5. Setup directories and permissions
 echo "Setting up directories..."
 mkdir -p "$PROJECT_ROOT/storage/logs"
-sudo chown -R www-data:www-data "$PROJECT_ROOT/storage/logs"
+
+# ✅ Изменено: www-data:web вместо www-data:www-data
+sudo chown -R www-data:web "$PROJECT_ROOT/storage/logs"
 sudo chmod -R 775 "$PROJECT_ROOT/storage/logs"
+
+# ✅ Изменено: устанавливаем права на venv
+sudo chown -R www-data:web "$VENV_PATH"
+sudo chmod -R 775 "$VENV_PATH"
+
+# ✅ Изменено: устанавливаем права на etc/face-api
+sudo chown -R www-data:web "$FACE_API_DIR"
+sudo chmod -R 775 "$FACE_API_DIR"
+
+echo "Setting permissions for web group..."
 
 # 6. Install systemd service
 echo "Installing systemd service..."

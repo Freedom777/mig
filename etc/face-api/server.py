@@ -1,3 +1,5 @@
+import imagehash
+from fastapi import Query  # для hash_size параметра
 import sys
 import time
 import logging
@@ -210,3 +212,47 @@ async def compare_faces(data: CompareRequest):
 @app.get("/health")
 async def health_check():
     return {"status": "ok", "mode": "cpu"}
+
+@app.post("/hash")
+async def get_hash(
+    file: UploadFile = File(...),
+    hash_size: int = Query(8, ge=4, le=32, description="Размер хэша (по умолчанию 8)")
+):
+    """Вычислить pHash для одного изображения"""
+    try:
+        img = Image.open(file.file)
+        hash_val = str(imagehash.phash(img, hash_size=hash_size))
+        return JSONResponse(content={
+            "hash": hash_val,
+            "hash_size": hash_size,
+            "bits": hash_size * hash_size
+        })
+    except Exception as e:
+        return JSONResponse(content={"error": str(e)}, status_code=500)
+
+
+@app.post("/compare-images")
+async def compare_images(
+    file1: UploadFile = File(...),
+    file2: UploadFile = File(...),
+    hash_size: int = Query(8, ge=4, le=32, description="Размер хэша (по умолчанию 8)")
+):
+    """Сравнить два изображения по pHash"""
+    try:
+        img1 = Image.open(file1.file)
+        img2 = Image.open(file2.file)
+
+        hash1 = imagehash.phash(img1, hash_size=hash_size)
+        hash2 = imagehash.phash(img2, hash_size=hash_size)
+
+        distance = hash1 - hash2  # встроенный Hamming distance
+
+        return JSONResponse(content={
+            "hash1": str(hash1),
+            "hash2": str(hash2),
+            "hash_size": hash_size,
+            "bits": hash_size * hash_size,
+            "distance": distance
+        })
+    except Exception as e:
+        return JSONResponse(content={"error": str(e)}, status_code=500)
