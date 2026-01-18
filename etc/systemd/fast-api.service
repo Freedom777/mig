@@ -1,0 +1,33 @@
+[Unit]
+Description=Face Recognition API Service (CPU-only)
+After=network.target
+Documentation=file:///var/www/photo/etc/face-api/README.md
+
+[Service]
+Type=notify
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/photo/etc/face-api
+Environment="PATH=/var/www/photo/face-api-venv/bin"
+ExecStart=/var/www/photo/face-api-venv/bin/gunicorn server:app \
+    -k uvicorn.workers.UvicornWorker \
+    --bind 127.0.0.1:5000 \
+    --workers 16 \
+    --threads 2 \
+    --timeout 300 \
+    --access-logfile /var/www/photo/storage/logs/face-api-access.log \
+    --error-logfile /var/www/photo/storage/logs/face-api-error.log \
+    --log-level info
+
+Restart=always
+RestartSec=10
+StartLimitBurst=3
+StartLimitInterval=60
+
+# Resource limits
+LimitNOFILE=65536
+MemoryMax=12G
+CPUQuota=800%
+
+[Install]
+WantedBy=multi-user.target

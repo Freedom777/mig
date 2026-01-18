@@ -22,3 +22,8 @@ yarn-error.log
 /.nova
 /.vscode
 /.zed
+
+# Python virtual environment
+/face-api-venv/
+*.pyc
+__pycache__/
