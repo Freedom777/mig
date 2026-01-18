@@ -24,7 +24,9 @@ echo "Creating virtual environment..."
 cd "$PROJECT_ROOT"
 python3 -m venv "$VENV_PATH"
 source "$VENV_PATH/bin/activate"
-pip install --upgrade pip setuptools wheel
+
+# ✅ ВАЖНО: Сначала обновляем pip и ставим packaging
+pip install --upgrade pip setuptools wheel packaging
 
 # 3. Build dlib (CPU-only)
 echo "Building dlib with CPU optimizations..."
@@ -33,7 +35,12 @@ git clone --depth 1 https://github.com/davisking/dlib.git
 cd dlib && mkdir -p build && cd build
 cmake .. -DUSE_AVX_INSTRUCTIONS=1
 cmake --build . --config Release
-cd .. && python3 setup.py install
+
+# ✅ Возвращаемся в директорию dlib (не build) и устанавливаем
+cd ..
+python3 setup.py install
+
+# Очистка
 cd /tmp && rm -rf dlib
 
 # 4. Install Python packages
