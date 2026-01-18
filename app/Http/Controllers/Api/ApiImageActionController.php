@@ -270,6 +270,38 @@ class ApiImageActionController extends Controller
             $queueStatuses['metadata'] = 'error';
         }
 
+        // 3. Queue Face Processing
+        try {
+            $response = BaseProcessJob::pushToQueue(
+                MetadataProcessJob::class,
+                'metadata',
+                [
+                    'image_id' => $image->id,
+                    /*'source_disk' => $preparedData['source_disk'],
+                    'source_path' => $preparedData['source_path'],
+                    'source_filename' => $preparedData['source_filename'],*/
+                ]
+            );
+
+            $responseData = $response->getData();
+            $queueStatuses['face'] = $responseData->status;
+
+            if ($responseData->status === 'success') {
+                Log::info('Face job queued', [
+                    'image_id' => $image->id
+                ]);
+            } elseif ($responseData->status === 'exists') {
+                Log::info('Face job already in queue', ['image_id' => $image->id]);
+            }
+
+        } catch (\Exception $e) {
+            Log::error('Failed to queue face process', [
+                'image_id' => $image->id,
+                'error' => $e->getMessage()
+            ]);
+            $queueStatuses['face'] = 'error';
+        }
+
         // Логируем общий результат постановки в очередь
         Log::info('Queue summary', [
             'image_id' => $image->id,
