@@ -76,7 +76,7 @@ class FaceProcessJob extends BaseProcessJob
         $faces = Face::query()
             ->whereNotNull('encoding')
             ->whereNull('parent_id')  // только корневые лица
-            ->where('status', 'ok')    // только подтвержденные
+            ->where('status', Face::STATUS_OK)    // только подтвержденные
             ->get(['id', 'encoding']);
 
         foreach ($newEncodings as $idx => $newEncoding) {

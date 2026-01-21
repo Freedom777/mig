@@ -80,7 +80,7 @@ class MetadataProcessJob extends BaseProcessJob
 
         // Запускаем GeolocationProcessJob с дедупликацией + атомарностью
         if ($metadata && $this->hasGeodata($metadata)) {
-            $this->queueGeolocationJob($metadata);
+            $this->queueGeolocationJob();
         } else {
             Log::info('No GPS data found in metadata for image ' . $this->taskData['image_id']);
         }
@@ -89,41 +89,32 @@ class MetadataProcessJob extends BaseProcessJob
     /**
      * Ставит GeolocationProcessJob в очередь с дедупликацией
      *
-     * @param array $metadata
      * @return void
      */
-    private function queueGeolocationJob(array $metadata): void {
+    private function queueGeolocationJob(): void {
         $jobData = [
             'image_id' => $this->taskData['image_id'],
-            'metadata' => json_encode($metadata),
-            'source_disk' => $this->taskData['source_disk'],
-            'source_path' => $this->taskData['source_path'],
-            'source_filename' => $this->taskData['source_filename'],
         ];
 
-        // Создаем уникальный ключ для дедупликации
-        $queueKey = md5(json_encode([
-                'class' => GeolocationProcessJob::class
-            ] + $jobData));
-
         try {
-            // Пытаемся создать запись для дедупликации
-            \App\Models\Queue::create(['queue_key' => $queueKey]);
+            $response = BaseProcessJob::pushToQueue(
+                GeolocationProcessJob::class,
+                config('queue.name.geolocations'),
+                $jobData
+            );
 
-            // Если успешно - запускаем через chain для атомарности
-            Bus::chain([
-                new GeolocationProcessJob($jobData)
-            ])->onQueue(config('queue.name.metadatas'))->dispatch();
+            $responseData = $response->getData();
+            if ($responseData->status === 'success') {
+                Log::info('Geolocation job queued', [
+                    'image_id' => $jobData['image_id'],
+                ]);
+            } elseif ($responseData->status === 'exists') {
+                Log::info('Geolocation job already in queue', ['image_id' => $jobData['image_id']]);
+            }
 
-            Log::info('Geolocation job queued for image ' . $this->taskData['image_id']);
-
-        } catch (\Illuminate\Database\QueryException $e) {
-            // Джоб уже в очереди - пропускаем
-            Log::info('Geolocation job already queued for image ' . $this->taskData['image_id']);
         } catch (\Exception $e) {
-            // Другая ошибка - логируем
-            Log::error('Failed to queue geolocation job', [
-                'image_id' => $this->taskData['image_id'],
+            Log::error('Failed to queue geolocation process', [
+                'image_id' => $jobData['image_id'],
                 'error' => $e->getMessage()
             ]);
         }

@@ -6,9 +6,12 @@ use App\Models\Image;
 use App\Services\ImagePathService;
 use Illuminate\Console\Command;
 
+
 class ImagesCheck extends Command
 {
     protected $signature = 'images:check';
+
+    protected $description = 'Checking images, debug image files and thumbnails presence in DB and filesystem.';
 
     public function handle()
     {

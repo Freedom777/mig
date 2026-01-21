@@ -46,9 +46,11 @@ class GeolocationProcessJob extends BaseProcessJob
 
     private function processGeolocation()
     {
-        $metadata = json_decode($this->taskData['metadata'], true);
-
-        if (!$metadata) {
+        $metadata = Image::where('id', $this->taskData['image_id'])->value('metadata');
+        if ($metadata) {
+            $metadata = json_decode($metadata, true);
+        }
+        if (!is_array($metadata)) {
             throw new \Exception('Invalid metadata JSON');
         }
 
