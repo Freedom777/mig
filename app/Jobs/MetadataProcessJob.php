@@ -3,12 +3,6 @@
 namespace App\Jobs;
 
 use App\Models\Image;
-use App\Traits\QueueAbleTrait;
-use Illuminate\Bus\Queueable;
-use Illuminate\Queue\SerializesModels;
-use Illuminate\Queue\InteractsWithQueue;
-use Illuminate\Foundation\Bus\Dispatchable;
-use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
@@ -16,7 +10,10 @@ use Symfony\Component\Process\Process;
 
 class MetadataProcessJob extends BaseProcessJob
 {
-    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels, QueueAbleTrait;
+    const FIELDS_NEEDED = [
+        'image_id',
+        'source_disk', 'source_path', 'source_filename',
+    ];
 
     /**
      * Execute the job.
@@ -59,15 +56,15 @@ class MetadataProcessJob extends BaseProcessJob
         $process = new Process(['exiftool', '-json', '-n', $sourcePath]);
         $process->run();
 
-        $output = $process->getOutput();
-
         if (!$process->isSuccessful()) {
             Log::error('Extraction metadata process failed: (' . $sourcePath . '): ' . $process->getErrorOutput());
             throw new \Exception('ExifTool process failed');
         }
 
+        $output = $process->getOutput();
         $data = json_decode($output, true);
-        $metadata = (is_array($data) && isset($data[0])) ? $data[0] : null;
+        $metadata = $data[0] ?? null;
+        $hasGps = $metadata ? $this->hasGeodata($metadata) : false;
 
         // Сохраняем метадату в базу
         Image::where('id', $this->taskData['image_id'])
@@ -75,12 +72,20 @@ class MetadataProcessJob extends BaseProcessJob
 
         Log::info('Metadata extracted successfully', [
             'image_id' => $this->taskData['image_id'],
-            'has_gps' => $metadata ? $this->hasGeodata($metadata) : false
+            'has_gps' => $hasGps
         ]);
 
         // Запускаем GeolocationProcessJob с дедупликацией + атомарностью
-        if ($metadata && $this->hasGeodata($metadata)) {
-            $this->queueGeolocationJob();
+        if ($hasGps) {
+            [$this->taskData['latitude'], $this->taskData['longitude']] = $this->extractCoordinates($metadata);
+            if (
+                !$this->taskData['latitude'] || !$this->taskData['longitude'] ||
+                !is_float($this->taskData['latitude']) || !is_float($this->taskData['longitude'])
+            ) {
+                Log::info('Can\'t extract coordinates for image ' . $this->taskData['image_id']);
+            } else {
+                $this->queueGeolocationJob();
+            }
         } else {
             Log::info('No GPS data found in metadata for image ' . $this->taskData['image_id']);
         }
@@ -94,6 +99,8 @@ class MetadataProcessJob extends BaseProcessJob
     private function queueGeolocationJob(): void {
         $jobData = [
             'image_id' => $this->taskData['image_id'],
+            'latitude' => $this->taskData['latitude'],
+            'longitude' => $this->taskData['longitude'],
         ];
 
         try {
@@ -129,5 +136,27 @@ class MetadataProcessJob extends BaseProcessJob
     private function hasGeodata(array $metadata): bool {
         return (isset($metadata['GPSLatitude']) && isset($metadata['GPSLongitude']))
             || isset($metadata['GPSPosition']);
+    }
+
+    private function extractCoordinates(array $metadata): ?array
+    {
+        if (isset($metadata['GPSLatitude']) && isset($metadata['GPSLongitude'])) {
+            return [
+                (float) $metadata['GPSLatitude'],
+                (float) $metadata['GPSLongitude']
+            ];
+        }
+
+        if (isset($metadata['GPSPosition'])) {
+            $parts = explode(' ', $metadata['GPSPosition']);
+            if (count($parts) >= 2) {
+                return [
+                    (float) $parts[0],
+                    (float) $parts[1]
+                ];
+            }
+        }
+
+        return null;
     }
 }

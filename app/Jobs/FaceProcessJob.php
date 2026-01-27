@@ -12,6 +12,9 @@ use Illuminate\Support\Str;
 
 class FaceProcessJob extends BaseProcessJob
 {
+    protected const FIELDS_NEEDED = [
+        'image_id',
+    ];
     private const FACE_RECOGNITION_THRESHOLD = 0.6;
     private const FACE_API_TIMEOUT = 300; // 5 минут для CPU
 

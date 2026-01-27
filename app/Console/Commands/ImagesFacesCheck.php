@@ -2,22 +2,21 @@
 
 namespace App\Console\Commands;
 
+use App\Jobs\FaceProcessJob;
 use App\Models\Face;
 use App\Models\Image;
 use App\Services\ImagePathService;
+use App\Traits\QueueAbleTrait;
 use Illuminate\Console\Command;
-use App\Services\ApiClient;
+use Illuminate\Support\Facades\Log;
 
 class ImagesFacesCheck extends Command
 {
-    protected $signature = 'images:faces:check';
-    protected ApiClient $apiClient;
+    use QueueAbleTrait;
 
-    public function __construct(ApiClient $apiClient)
-    {
-        parent::__construct();
-        $this->apiClient = $apiClient;
-    }
+    protected $signature = 'images:faces:check';
+
+    protected $description = 'Take all images, which are have face_checked true or have recheck status and push them to queue.';
 
     public function handle()
     {
@@ -57,26 +56,28 @@ class ImagesFacesCheck extends Command
                 $image->debug_filename = null;
                 $image->status = Image::STATUS_PROCESS;
                 $image->save();
+
                 $this->extractFaces($image->id);
             }
         }
     }
 
-    private function extractFaces(int $id)
+    private function extractFaces(int $imageId)
     {
         try {
-            $requestData = [
-                'image_id' => $id,
-            ];
-            $response = $this->apiClient->faceProcess($requestData);
+            $response = self::pushToQueue(FaceProcessJob::class, config('queue.name.faces'), [
+                'image_id' => $imageId,
+            ]);
 
-            if ($response->successful()) {
-                $this->info('Task queued, image ID: ' . $id);
-            } else {
-                $this->error('API error (image ID: ' . $id . '): ' . $response->body());
+            $responseData = $response->getData();
+
+            if ($responseData->status === 'success') {
+                Log::info('Face job queued', ['image_id' => $imageId]);
+            } elseif ($responseData->status === 'exists') {
+                Log::info('Face job already in queue', ['image_id' => $imageId]);
             }
         } catch (\Exception $e) {
-            $this->error('Failed to send to API (image ID: ' . $id . '): ' . $e->getMessage());
+            $this->error('Failed to send to API (image ID: ' . $imageId . '): ' . $e->getMessage());
         }
     }
 }

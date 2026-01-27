@@ -2,23 +2,20 @@
 
 namespace App\Console\Commands;
 
+use App\Jobs\MetadataProcessJob;
 use App\Models\Image;
 use App\Services\ApiClient;
+use App\Traits\QueueAbleTrait;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 
 class ImagesMetadatas extends Command
 {
+    use QueueAbleTrait;
+
     protected $signature = 'images:metadatas {--path : Path to image or directory}';
-
-    protected ApiClient $apiClient;
-
-    public function __construct(ApiClient $apiClient)
-    {
-        parent::__construct();
-        $this->apiClient = $apiClient;
-    }
 
     public function handle()
     {
@@ -28,7 +25,7 @@ class ImagesMetadatas extends Command
         }
     }
 
-    private function extractMetadata(int $id, string $diskLabel, string $sourcePath, string $filename)
+    private function extractMetadata(int $imageId, string $diskLabel, string $sourcePath, string $filename)
     {
         $disk = Storage::disk($diskLabel);
         if (!is_dir($disk->path($sourcePath))) {
@@ -42,18 +39,16 @@ class ImagesMetadatas extends Command
         }
 
         try {
-            $requestData = [
-                'image_id' => $id,
-                'source_disk' => $diskLabel,
-                'source_path' => $sourcePath,
-                'source_filename' => $filename,
-            ];
-            $response = $this->apiClient->metadataProcess($requestData);
+            $response = self::pushToQueue(MetadataProcessJob::class, config('queue.name.metadatas'), [
+                'image_id' => $imageId,
+            ]);
 
-            if ($response->successful()) {
-                $this->info('Task queued: ' . $diskLabel . '://' . $sourcePath . '/' . $filename);
-            } else {
-                $this->error('API error (' . $diskLabel . '://' . $sourcePath . '/' . $filename . '): ' . $response->body());
+            $responseData = $response->getData();
+
+            if ($responseData->status === 'success') {
+                Log::info('Geolocation job queued', ['image_id' => $imageId]);
+            } elseif ($responseData->status === 'exists') {
+                Log::info('Geolocation job already in queue', ['image_id' => $imageId]);
             }
         } catch (\Exception $e) {
             $this->error('Failed to send to API (' . $diskLabel . '://' . $sourcePath . '/' . $filename . '): ' . $e->getMessage());

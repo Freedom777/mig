@@ -19,6 +19,11 @@ class GeolocationProcessJob extends BaseProcessJob
      */
     private const NOMINATIM_RATE_LIMIT_SECONDS = 2;
 
+    protected const FIELDS_NEEDED = [
+        'image_id',
+        'latitude', 'longitude' // From metadata field, acquire from MetadataProcessJob
+    ];
+
     public function handle()
     {
         $lockKey = 'geolocation-processing:' . $this->taskData['image_id'];
@@ -46,15 +51,8 @@ class GeolocationProcessJob extends BaseProcessJob
 
     private function processGeolocation()
     {
-        $metadata = Image::where('id', $this->taskData['image_id'])->value('metadata');
-        if ($metadata) {
-            $metadata = json_decode($metadata, true);
-        }
-        if (!is_array($metadata)) {
-            throw new \Exception('Invalid metadata JSON');
-        }
-
-        [$latitude, $longitude] = $this->extractCoordinates($metadata);
+        $latitude = $this->taskData['latitude'];
+        $longitude = $this->taskData['longitude'];
 
         $pointLatLon = new Point($latitude, $longitude);
 
@@ -113,28 +111,6 @@ class GeolocationProcessJob extends BaseProcessJob
 
         // Сохраняем время последнего вызова
         Cache::put($lockKey, microtime(true), 5); // TTL 5 секунд
-    }
-
-    private function extractCoordinates(array $metadata): array
-    {
-        if (isset($metadata['GPSLatitude']) && isset($metadata['GPSLongitude'])) {
-            return [
-                (float) $metadata['GPSLatitude'],
-                (float) $metadata['GPSLongitude']
-            ];
-        }
-
-        if (isset($metadata['GPSPosition'])) {
-            $parts = explode(' ', $metadata['GPSPosition']);
-            if (count($parts) >= 2) {
-                return [
-                    (float) $parts[0],
-                    (float) $parts[1]
-                ];
-            }
-        }
-
-        throw new \Exception('No valid GPS coordinates found in metadata');
     }
 
     private function getAddressId(float $latitude, float $longitude): false|int

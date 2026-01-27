@@ -17,12 +17,16 @@ class GeolocationQueuePushApiController extends Controller
         try {
             $data = $request->validate([
                 'image_id' => 'required|integer|min:1',
-                'metadata' => 'required|string',
+                'latitude' => 'required|float',
+                'longitude' => 'required|float',
             ], [
                 'image_id.required' => 'Image ID is required',
                 'image_id.integer' => 'Image ID must be an integer',
                 'image_id.min' => 'Image ID must be at least 1 byte',
-                'metadata.required' => 'Metadata is required',
+                'latitude.required' => 'Latitude is required',
+                'latitude.float' => 'Latitude is not float',
+                'longitude.required' => 'Longitude is required',
+                'longitude.float' => 'Longitude is not float',
             ]);
 
             return self::pushToQueue(GeolocationProcessJob::class, config('queue.name.geolocations'), $data);

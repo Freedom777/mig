@@ -11,6 +11,13 @@ use Illuminate\Support\Facades\Log;
 
 class ThumbnailProcessJob extends BaseProcessJob
 {
+
+    const FIELDS_NEEDED = [
+        'source_disk', 'source_path', 'source_filename',
+        'thumbnail_path', 'thumbnail_filename',
+        'thumbnail_method', 'thumbnail_width', 'thumbnail_height',
+    ];
+
     /**
      * Execute the job.
      *

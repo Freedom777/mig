@@ -8,15 +8,17 @@ use Jenssegers\ImageHash\Implementations\PerceptualHash;
 use App\Services\ImagePathService;
 use Illuminate\Console\Command;
 
-class ImagesHashes extends Command
+class ImagesPhashes extends Command
 {
-    protected $signature = 'images:hashes';
+    protected $signature = 'images:phashes';
 
     protected $description = 'Create images pHashes';
 
+    private const PHASH_DISTANCE_THRESHOLD = 5;
+
     public function handle()
     {
-        $images = Image::query()->get(['id', 'disk', 'path', 'filename', 'hash']);
+        $images = Image::query()->get(['id', 'hash']);
         $hashes = collect([]);
         $phashes = collect([]);
         foreach ($images as $image) {
@@ -33,7 +35,7 @@ class ImagesHashes extends Command
             if (!$checkHash) {
                 foreach ($phashes as $phash) {
                     $distance = $hasher->distance($phashCurrent, $phash['phash']);
-                    if ($distance < 5) {
+                    if ($distance < self::PHASH_DISTANCE_THRESHOLD) {
                         $image->parent_id = $phash['id'];
                     }
                 }
