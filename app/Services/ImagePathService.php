@@ -19,8 +19,12 @@ class ImagePathService
         return config('image.paths.debug_subdir');
     }
 
-    public static function getImagePath(Image $image) {
+    public static function getImagePathByObj(Image $image) {
         return Storage::disk($image->disk)->path($image->path . '/' . $image->filename);
+    }
+
+    public static function getImagePathByParams(string $diskLabel, string $path, string $filename) {
+        return Storage::disk($diskLabel)->path($path . '/' . $filename);
     }
 
     public static function getThumbnailSubdir(int $width, int $height): string

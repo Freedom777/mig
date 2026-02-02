@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Models\Geolocation;
 use App\Models\Image;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
@@ -64,7 +65,7 @@ class MetadataProcessJob extends BaseProcessJob
         $output = $process->getOutput();
         $data = json_decode($output, true);
         $metadata = $data[0] ?? null;
-        $hasGps = $metadata ? $this->hasGeodata($metadata) : false;
+        $hasGps = $metadata ? Geolocation::hasGeodata($metadata) : false;
 
         // Сохраняем метадату в базу
         Image::where('id', $this->taskData['image_id'])
@@ -77,7 +78,7 @@ class MetadataProcessJob extends BaseProcessJob
 
         // Запускаем GeolocationProcessJob с дедупликацией + атомарностью
         if ($hasGps) {
-            [$this->taskData['latitude'], $this->taskData['longitude']] = $this->extractCoordinates($metadata);
+            [$this->taskData['latitude'], $this->taskData['longitude']] = Geolocation::extractCoordinates($metadata);
             if (
                 !$this->taskData['latitude'] || !$this->taskData['longitude'] ||
                 !is_float($this->taskData['latitude']) || !is_float($this->taskData['longitude'])
@@ -125,38 +126,5 @@ class MetadataProcessJob extends BaseProcessJob
                 'error' => $e->getMessage()
             ]);
         }
-    }
-
-    /**
-     * Проверяет наличие геоданных в метадате
-     *
-     * @param array $metadata
-     * @return bool
-     */
-    private function hasGeodata(array $metadata): bool {
-        return (isset($metadata['GPSLatitude']) && isset($metadata['GPSLongitude']))
-            || isset($metadata['GPSPosition']);
-    }
-
-    private function extractCoordinates(array $metadata): ?array
-    {
-        if (isset($metadata['GPSLatitude']) && isset($metadata['GPSLongitude'])) {
-            return [
-                (float) $metadata['GPSLatitude'],
-                (float) $metadata['GPSLongitude']
-            ];
-        }
-
-        if (isset($metadata['GPSPosition'])) {
-            $parts = explode(' ', $metadata['GPSPosition']);
-            if (count($parts) >= 2) {
-                return [
-                    (float) $parts[0],
-                    (float) $parts[1]
-                ];
-            }
-        }
-
-        return null;
     }
 }

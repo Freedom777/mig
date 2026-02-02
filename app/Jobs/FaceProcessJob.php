@@ -47,7 +47,7 @@ class FaceProcessJob extends BaseProcessJob
     private function processFaces()
     {
         $image = Image::findOrFail($this->taskData['image_id']);
-        $imagePath = ImagePathService::getImagePath($image);
+        $imagePath = ImagePathService::getImagePathByObj($image);
 
         // Увеличенный timeout для CPU
         $response = Http::timeout(self::FACE_API_TIMEOUT)

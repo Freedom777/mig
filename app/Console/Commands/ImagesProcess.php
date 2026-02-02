@@ -2,13 +2,14 @@
 
 namespace App\Console\Commands;
 
+use App\Jobs\BaseProcessJob;
+use App\Jobs\ImageProcessJob;
 use App\Models\Image;
 use App\Services\ApiClient;
+use App\Services\ImagePathService;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
-use Jenssegers\ImageHash\ImageHash;
-use Jenssegers\ImageHash\Implementations\PerceptualHash;
-
 
 class ImagesProcess extends Command
 {
@@ -91,18 +92,33 @@ class ImagesProcess extends Command
 
     private function processImage(string $diskLabel, string $sourcePath, string $filename)
     {
-        $requestData = Image::prepareData($diskLabel, $sourcePath, $filename);
-        $diskPath = $diskLabel . '://' . $sourcePath . '/' . $filename;
-        try {
-            $response = $this->apiClient->imageProcess($requestData);
+        $preparedData = Image::prepareData($diskLabel, $sourcePath, $filename);
+        $image = Image::updateInsert($preparedData);
 
-            if ($response->successful()) {
-                $this->info('Task queued: ' . $diskPath);
-            } else {
-                $this->error('API error (' . $diskPath . '): ' . $response->body());
+        if (!$image) {
+            Log::error('Failed to insert image', [
+                'disk' => config('image.paths.disk'),
+                'path' => $sourcePath,
+                'filename' => $filename
+            ]);
+            $this->error('Failed to insert image');
+        } else {
+            $response = BaseProcessJob::pushToQueue(
+                ImageProcessJob::class,
+                config('queue.name.images'),
+                [
+                    'image_id' => $image->id,
+                ]
+            );
+
+            $responseData = $response->getData();
+            if ($responseData->status === 'success') {
+                Log::info('Image job queued', ['image_id' => $image->id]);
+                $this->info('Image job queued: ID = ' . $image->id);
+            } elseif ($responseData->status === 'exists') {
+                Log::info('Image job already in queue', ['image_id' => $image->id]);
+                $this->info('Image job already in queue: ID = ' . $image->id);
             }
-        } catch (\Exception $e) {
-            $this->error('Failed to send to API (' . $diskPath . '): ' . $e->getMessage());
         }
     }
 }

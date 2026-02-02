@@ -19,7 +19,7 @@ class ImagesCheck extends Command
 
         foreach ($images as $image) {
             $imagePath = $image->filename
-                ? ImagePathService::getImagePath($image)
+                ? ImagePathService::getImagePathByObj($image)
                 : null;
 
             if (!$imagePath || !is_file($imagePath)) {

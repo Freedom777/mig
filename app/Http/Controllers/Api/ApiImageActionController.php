@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Jobs\BaseProcessJob;
 use App\Jobs\FaceProcessJob;
+use App\Jobs\ImageProcessJob;
 use App\Jobs\MetadataProcessJob;
 use App\Jobs\ThumbnailProcessJob;
 use App\Models\Image;
@@ -146,10 +147,26 @@ class ApiImageActionController extends Controller
             $path = config('image.paths.images');
             $preparedData = Image::prepareData(config('image.paths.disk'), $path, $filename);
 
+            /*if (!$preparedData) {
+                Log::notice('Image exists ', [
+                    'disk' => config('image.paths.disk'),
+                    'path' => $path,
+                    'filename' => $filename
+                ]);
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Image exists: ' . $filename,
+                ], 500);
+            }*/
+
             $image = Image::updateInsert($preparedData);
 
             if (!$image) {
-                Log::error('Failed to insert image', ['filename' => $filename]);
+                Log::error('Failed to insert image', [
+                    'disk' => config('image.paths.disk'),
+                    'path' => $path,
+                    'filename' => $filename
+                ]);
                 return response()->json([
                     'status' => 'error',
                     'message' => 'Failed to insert image'
@@ -192,6 +209,34 @@ class ApiImageActionController extends Controller
     private function queueImageProcessing(Image $image, array $preparedData): void
     {
         $queueStatuses = [];
+
+        // 0. Image size and hashes processing
+        try {
+            $response = BaseProcessJob::pushToQueue(
+                ImageProcessJob::class,
+                config('queue.name.images'),
+                [
+                    'image_id' => $image->id,
+                ]
+            );
+
+            $responseData = $response->getData();
+            $queueStatuses['image'] = $responseData->status;
+
+            if ($responseData->status === 'success') {
+                Log::info('Image job queued', ['image_id' => $image->id]);
+            } elseif ($responseData->status === 'exists') {
+                Log::info('Image job already in queue', ['image_id' => $image->id]);
+            }
+
+        } catch (\Exception $e) {
+            Log::error('Failed to queue image process', [
+                'image_id' => $image->id,
+                'error' => $e->getMessage()
+            ]);
+            $queueStatuses['image'] = 'error';
+        }
+
 
         // 1. Queue Thumbnail Processing
         try {

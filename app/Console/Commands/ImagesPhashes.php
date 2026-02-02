@@ -14,7 +14,7 @@ class ImagesPhashes extends Command
 
     protected $description = 'Create images pHashes';
 
-    private const PHASH_DISTANCE_THRESHOLD = 5;
+    public const PHASH_DISTANCE_THRESHOLD = 5;
 
     public function handle()
     {
@@ -22,7 +22,7 @@ class ImagesPhashes extends Command
         $hashes = collect([]);
         $phashes = collect([]);
         foreach ($images as $image) {
-            $imagePath = ImagePathService::getImagePath($image);
+            $imagePath = ImagePathService::getImagePathByObj($image);
             if (!is_file($imagePath)) {
                 continue;
             }

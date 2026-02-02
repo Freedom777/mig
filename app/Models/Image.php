@@ -2,18 +2,12 @@
 
 namespace App\Models;
 
-use App\Traits\QueueAbleTrait;
-use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
-use Jenssegers\ImageHash\ImageHash;
-use Jenssegers\ImageHash\Implementations\PerceptualHash;
 
 class Image extends Model
 {
-    use QueueAbleTrait;
-
     const STATUS_PROCESS = 'process';
 
     const STATUS_NOT_PHOTO = 'not_photo';
@@ -135,41 +129,37 @@ class Image extends Model
             ->value('id');
     }
 
-    public static function prepareData(string $diskLabel, string $sourcePath, string $filename) : array {
+    /**
+     * @param string $diskLabel
+     * @param string $sourcePath
+     * @param string $filename
+     * @param bool $updateIfExists In general cases = true, for run other operations for image again (thumbnail, geolocation, etc ...)
+     * @return array|null
+     */
+    public static function prepareData(string $diskLabel, string $sourcePath, string $filename, bool $updateIfExists = true): ?array
+    {
         $disk = Storage::disk($diskLabel);
         $filePath = $disk->path($sourcePath) . '/' . $filename;
 
-        $existImageFlag = Image::where([
-            'disk' => $diskLabel,
-            'path' => $sourcePath,
-            'filename' => $filename,
-        ])->exists();
+        if ($updateIfExists) {
+            // Проверяем существование записи
+            $existingImage = Image::where([
+                'disk' => $diskLabel,
+                'path' => $sourcePath,
+                'filename' => $filename,
+            ])->exists();
 
-        $md5 = md5_file($filePath);
-        $hasher = new ImageHash(new PerceptualHash());
-        $phashCurrent = $hasher->hash($filePath);
-        $imageData = getimagesize($filePath);
-
-        $duplicateId = null;
-        if (!$existImageFlag) {
-            // Проверяем, есть ли уже такое изображение в базе
-            $duplicateId = Image::where('hash', $md5)->value('id');
-            if (!$duplicateId) {
-                $phashCurrentHex = $phashCurrent->toHex();
-                $duplicateId = Image::findSimilarImageId($phashCurrentHex);
+            // Если изображение уже есть в базе - прерываем обработку
+            if ($existingImage) {
+                return null;
             }
         }
 
         return [
-            'parent_id' => $duplicateId,
             'source_disk' => $diskLabel,
             'source_path' => $sourcePath,
             'source_filename' => $filename,
-            'width' => $imageData[0],
-            'height' => $imageData[1],
             'size' => filesize($filePath),
-            'hash' => $md5,
-            'phash' => $phashCurrent,
             'created_at_file' => date('Y-m-d H:i:s', filectime($filePath)),
             'updated_at_file' => date('Y-m-d H:i:s', filemtime($filePath)),
         ];
@@ -187,12 +177,12 @@ class Image extends Model
                     'filename' => $imageData['source_filename']
                 ],
                 [
-                    'parent_id' => $imageData['parent_id'],
-                    'width' => $imageData['width'],
-                    'height' => $imageData['height'],
+                    // 'parent_id' => $imageData['parent_id'],
+                    // 'width' => $imageData['width'],
+                    // 'height' => $imageData['height'],
                     'size' => $imageData['size'],
-                    'hash' => $imageData['hash'],
-                    'phash' => $imageData['phash'],
+                    // 'hash' => $imageData['hash'],
+                    // 'phash' => $imageData['phash'],
                     'created_at_file' => $imageData['created_at_file'],
                     'updated_at_file' => $imageData['updated_at_file'],
                 ]
@@ -206,5 +196,4 @@ class Image extends Model
             return null;
         }
     }
-
 }
