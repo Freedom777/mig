@@ -2,58 +2,58 @@
 
 namespace App\Console\Commands;
 
-use App\Jobs\MetadataProcessJob;
+use App\Contracts\ImageQueueDispatcherInterface;
 use App\Models\Image;
-use App\Services\ApiClient;
-use App\Traits\QueueAbleTrait;
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Storage;
 
 class ImagesMetadatas extends Command
 {
-    use QueueAbleTrait;
+    protected $signature = 'images:metadatas';
 
-    protected $signature = 'images:metadatas {--path : Path to image or directory}';
+    protected $description = 'Queue metadata extraction for images without metadata';
 
-    public function handle()
-    {
-        $images = Image::whereNull('metadata')->get();
-        foreach ($images as $image) {
-            $this->extractMetadata($image->id, $image->disk, $image->path, $image->filename);
-        }
+    public function __construct(
+        protected ImageQueueDispatcherInterface $dispatcher
+    ) {
+        parent::__construct();
     }
 
-    private function extractMetadata(int $imageId, string $diskLabel, string $sourcePath, string $filename)
+    public function handle(): int
     {
-        $disk = Storage::disk($diskLabel);
-        if (!is_dir($disk->path($sourcePath))) {
-            $this->error('It\'s not a directory, ' . $diskLabel . '://' . $sourcePath);
-            return 1;
+        $query = Image::whereNull('metadata');
+        $total = $query->count();
+
+        if ($total === 0) {
+            $this->info('No images without metadata found.');
+            return Command::SUCCESS;
         }
 
-        if (!is_file($disk->path($sourcePath . '/' . $filename))) {
-            $this->error('It\'s not a file, ' . $diskLabel . '://' . $sourcePath . '/' . $filename);
-            return 1;
-        }
+        $this->info("Found {$total} images without metadata.");
 
-        try {
-            $response = self::pushToQueue(MetadataProcessJob::class, config('queue.name.metadatas'), [
-                'image_id' => $imageId,
-            ]);
+        $queued = 0;
+        $skipped = 0;
+        $errors = 0;
 
-            $responseData = $response->getData();
+        $query->chunkById(1000, function ($images) use (&$queued, &$skipped, &$errors) {
+            foreach ($images as $image) {
+                try {
+                    $status = $this->dispatcher->dispatchMetadata($image);
 
-            if ($responseData->status === 'success') {
-                Log::info('Geolocation job queued', ['image_id' => $imageId]);
-            } elseif ($responseData->status === 'exists') {
-                Log::info('Geolocation job already in queue', ['image_id' => $imageId]);
+                    match ($status) {
+                        'success', 'completed' => $queued++,
+                        'exists', 'skipped', 'dry-run' => $skipped++,
+                        default => $errors++,
+                    };
+
+                } catch (\Exception $e) {
+                    $this->error("Failed for image {$image->id}: {$e->getMessage()}");
+                    $errors++;
+                }
             }
-        } catch (\Exception $e) {
-            $this->error('Failed to send to API (' . $diskLabel . '://' . $sourcePath . '/' . $filename . '): ' . $e->getMessage());
-        }
+        });
 
+        $this->info("Completed: {$queued} queued, {$skipped} skipped, {$errors} errors.");
 
+        return $errors > 0 ? Command::FAILURE : Command::SUCCESS;
     }
 }

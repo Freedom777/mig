@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Contracts\ImageQueueDispatcherInterface;
 use App\Models\Geolocation;
 use App\Models\Image;
 use Illuminate\Support\Facades\Cache;
@@ -11,20 +12,14 @@ use Symfony\Component\Process\Process;
 
 class MetadataProcessJob extends BaseProcessJob
 {
-    const FIELDS_NEEDED = [
-        'image_id',
-        'source_disk', 'source_path', 'source_filename',
-    ];
-
     /**
      * Execute the job.
-     *
-     * @return void
      */
-    public function handle() {
-        // Lock на основе image_id для предотвращения параллельной обработки
-        $lockKey = 'metadata-processing:' . $this->taskData['image_id'];
-        $lock = Cache::lock($lockKey, 30); // 30 секунд достаточно для ExifTool
+    public function handle(): void
+    {
+        $imageId = $this->taskData['image_id'];
+        $lockKey = 'metadata-processing:' . $imageId;
+        $lock = Cache::lock($lockKey, 30);
 
         try {
             $lock->block(30, function () {
@@ -32,13 +27,13 @@ class MetadataProcessJob extends BaseProcessJob
             });
         } catch (\Illuminate\Contracts\Cache\LockTimeoutException $e) {
             Log::warning('Could not acquire lock for metadata processing', [
-                'image_id' => $this->taskData['image_id']
+                'image_id' => $imageId
             ]);
-            // Повторить через 10 секунд
             $this->release(10);
+            return;
         } catch (\Exception $e) {
             Log::error('Metadata processing failed', [
-                'image_id' => $this->taskData['image_id'],
+                'image_id' => $imageId,
                 'error' => $e->getMessage()
             ]);
             throw $e;
@@ -50,15 +45,22 @@ class MetadataProcessJob extends BaseProcessJob
     /**
      * Обрабатывает метадату изображения
      */
-    private function processMetadata(): void {
-        $disk = Storage::disk($this->taskData['source_disk']);
-        $sourcePath = $disk->path($this->taskData['source_path'] . '/' . $this->taskData['source_filename']);
+    private function processMetadata(): void
+    {
+        $image = Image::findOrFail($this->taskData['image_id']);
+
+        $disk = Storage::disk($image->disk);
+        $sourcePath = $disk->path($image->path . '/' . $image->filename);
 
         $process = new Process(['exiftool', '-json', '-n', $sourcePath]);
         $process->run();
 
         if (!$process->isSuccessful()) {
-            Log::error('Extraction metadata process failed: (' . $sourcePath . '): ' . $process->getErrorOutput());
+            Log::error('ExifTool process failed', [
+                'image_id' => $image->id,
+                'path' => $sourcePath,
+                'error' => $process->getErrorOutput()
+            ]);
             throw new \Exception('ExifTool process failed');
         }
 
@@ -68,61 +70,38 @@ class MetadataProcessJob extends BaseProcessJob
         $hasGps = $metadata ? Geolocation::hasGeodata($metadata) : false;
 
         // Сохраняем метадату в базу
-        Image::where('id', $this->taskData['image_id'])
-            ->update(['metadata' => $metadata]);
+        $image->update(['metadata' => $metadata]);
 
         Log::info('Metadata extracted successfully', [
-            'image_id' => $this->taskData['image_id'],
+            'image_id' => $image->id,
             'has_gps' => $hasGps
         ]);
 
-        // Запускаем GeolocationProcessJob с дедупликацией + атомарностью
+        // Запускаем GeolocationProcessJob если есть GPS данные
         if ($hasGps) {
-            [$this->taskData['latitude'], $this->taskData['longitude']] = Geolocation::extractCoordinates($metadata);
-            if (
-                !$this->taskData['latitude'] || !$this->taskData['longitude'] ||
-                !is_float($this->taskData['latitude']) || !is_float($this->taskData['longitude'])
-            ) {
-                Log::info('Can\'t extract coordinates for image ' . $this->taskData['image_id']);
-            } else {
-                $this->queueGeolocationJob();
-            }
+            $this->queueGeolocationJob($image);
         } else {
-            Log::info('No GPS data found in metadata for image ' . $this->taskData['image_id']);
+            Log::info('No GPS data found in metadata', ['image_id' => $image->id]);
         }
     }
 
     /**
-     * Ставит GeolocationProcessJob в очередь с дедупликацией
-     *
-     * @return void
+     * Ставит GeolocationProcessJob в очередь
      */
-    private function queueGeolocationJob(): void {
-        $jobData = [
-            'image_id' => $this->taskData['image_id'],
-            'latitude' => $this->taskData['latitude'],
-            'longitude' => $this->taskData['longitude'],
-        ];
-
+    private function queueGeolocationJob(Image $image): void
+    {
         try {
-            $response = BaseProcessJob::pushToQueue(
-                GeolocationProcessJob::class,
-                config('queue.name.geolocations'),
-                $jobData
-            );
+            /** @var ImageQueueDispatcherInterface $dispatcher */
+            $dispatcher = app(ImageQueueDispatcherInterface::class);
+            $status = $dispatcher->dispatchGeolocation($image);
 
-            $responseData = $response->getData();
-            if ($responseData->status === 'success') {
-                Log::info('Geolocation job queued', [
-                    'image_id' => $jobData['image_id'],
-                ]);
-            } elseif ($responseData->status === 'exists') {
-                Log::info('Geolocation job already in queue', ['image_id' => $jobData['image_id']]);
-            }
-
+            Log::info('Geolocation job dispatched', [
+                'image_id' => $image->id,
+                'status' => $status,
+            ]);
         } catch (\Exception $e) {
-            Log::error('Failed to queue geolocation process', [
-                'image_id' => $jobData['image_id'],
+            Log::error('Failed to dispatch geolocation job', [
+                'image_id' => $image->id,
                 'error' => $e->getMessage()
             ]);
         }

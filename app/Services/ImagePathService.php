@@ -2,121 +2,111 @@
 
 namespace App\Services;
 
+use App\Contracts\ImagePathServiceInterface;
 use App\Models\Image;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
-class ImagePathService
+class ImagePathService implements ImagePathServiceInterface
 {
-    public static function getDebugImagePath(Image $image) : ?string {
+    /**
+     * Получить полный путь к debug-изображению
+     */
+    public function getDebugImagePath(Image $image): ?string
+    {
         if ($image->debug_filename) {
-            return Storage::disk($image->disk)->path($image->path . '/' . self::getImageDebugSubdir() . '/' . $image->debug_filename);
+            return Storage::disk($image->disk)->path(
+                $image->path . '/' . $this->getImageDebugSubdir() . '/' . $image->debug_filename
+            );
         }
         return null;
     }
 
-    public static function getImageDebugSubdir() {
-        return config('image.paths.debug_subdir');
+    /**
+     * Получить поддиректорию для debug-изображений
+     */
+    public function getImageDebugSubdir(): string
+    {
+        return config('image.paths.debug_subdir', 'debug');
     }
 
-    public static function getImagePathByObj(Image $image) {
+    /**
+     * Получить полный путь к изображению по объекту Image
+     */
+    public function getImagePathByObj(Image $image): string
+    {
         return Storage::disk($image->disk)->path($image->path . '/' . $image->filename);
     }
 
-    public static function getImagePathByParams(string $diskLabel, string $path, string $filename) {
-        return Storage::disk($diskLabel)->path($path . '/' . $filename);
+    /**
+     * Получить полный путь к изображению по параметрам
+     */
+    public function getImagePathByParams(string $disk, string $path, string $filename): string
+    {
+        return Storage::disk($disk)->path($path . '/' . $filename);
     }
 
-    public static function getThumbnailSubdir(int $width, int $height): string
+    /**
+     * Получить поддиректорию для thumbnail заданного размера
+     */
+    public function getThumbnailSubdir(int $width, int $height): string
     {
-        return Str::of(config('image.thumbnails.dir_format'))
+        $format = config('image.thumbnails.dir_format', '{width}x{height}');
+
+        return Str::of($format)
             ->replace('{width}', $width)
             ->replace('{height}', $height)
-            ->__toString();
+            ->toString();
     }
 
-    public static function getThumbnailUrl(Image $image): string {
-        /*$path = implode('/', array_filter([
-            $image->path,
-            $image->thumbnail_path,
-            $image->thumbnail_filename
-        ]));
-        $url = Storage::disk($image->disk)->url($path);*/
-
+    /**
+     * Получить URL thumbnail
+     */
+    public function getThumbnailUrl(Image $image): string
+    {
         return config('app.image_api_url') . '/thumbnail/' . $image->id . '.jpg';
     }
 
-    public static function getImageUrl(Image $image): string {
+    /**
+     * Получить URL оригинального изображения
+     */
+    public function getImageUrl(Image $image): string
+    {
         return config('app.image_api_url') . '/image/' . $image->id . '.jpg';
     }
 
-    public static function getThumbnailFilename(string $filename, string $method, int $width, int $height): string
+    /**
+     * Сгенерировать имя файла для thumbnail
+     */
+    public function getThumbnailFilename(string $filename, string $method, int $width, int $height): string
     {
-        $postfix = Str::of(config('image.thumbnails.postfix'))
+        $postfixFormat = config('image.thumbnails.postfix', '_{method}_{width}x{height}');
+
+        $postfix = Str::of($postfixFormat)
             ->replace('{method}', $method)
             ->replace('{width}', $width)
             ->replace('{height}', $height)
-            ->__toString();
-        $extension = pathinfo($filename, PATHINFO_EXTENSION);
+            ->toString();
 
-        return pathinfo($filename, PATHINFO_FILENAME) . $postfix . '.' . $extension;
+        $extension = pathinfo($filename, PATHINFO_EXTENSION);
+        $basename = pathinfo($filename, PATHINFO_FILENAME);
+
+        return $basename . $postfix . '.' . $extension;
     }
 
-    public static function getDefaultThumbnailPath(Image $image): string
+    /**
+     * Получить полный путь к thumbnail по умолчанию
+     */
+    public function getDefaultThumbnailPath(Image $image): string
     {
+        $width = config('image.thumbnails.width');
+        $height = config('image.thumbnails.height');
+        $method = config('image.thumbnails.method');
+
         return Storage::disk($image->disk)->path(
             $image->path . '/' .
-            self::getThumbnailSubdir(config('image.thumbnails.width'), config('image.thumbnails.height')) . '/' .
-            self::getThumbnailFilename($image->filename, config('image.thumbnails.method'), config('image.thumbnails.width'), config('image.thumbnails.height'))
+            $this->getThumbnailSubdir($width, $height) . '/' .
+            $this->getThumbnailFilename($image->filename, $method, $width, $height)
         );
     }
-///////////////////////////////////////////
-///
-    /*
-    public static function getStorageBasePath(bool $isThumbnail = false): string
-    {
-        return $isThumbnail ? env('THUMBNAIL_STORAGE_PATH') : env('IMAGE_STORAGE_PATH');
-    }
-
-    public static function getFullPath(string $directory, string $filename, bool $isThumbnail = false, ?int $width = null, ?int $height = null): string
-    {
-        return storage_path('app/' . env('IMAGE_STORAGE_DISK') . '/' . self::getRelativeStoragePath($directory, $filename, $isThumbnail, $width, $height));
-    }
-
-    public static function getRelativeStoragePath(string $directory, string $filename, bool $isThumbnail = false, ?int $width = null, ?int $height = null): string
-    {
-        if ($isThumbnail) {
-            $filename = self::getThumbnailFilename($filename, $width, $height);
-            if ($width && $height) {
-                $directory .= '/' . self::getThumbnailSubdir($width, $height);
-            }
-        }
-
-        return implode('/', array_filter([
-            self::getStorageBasePath($isThumbnail),
-            $directory,
-            $filename
-        ]));
-    }
-
-    public static function getWebPath(string $directory, string $filename, bool $isThumbnail = false, ?int $width = null, ?int $height = null): string
-    {
-        $subDir = '';
-        if ($isThumbnail) {
-            $filename = self::getThumbnailFilename($filename, $width, $height);
-            if ($width && $height) {
-                $subDir .= self::getThumbnailSubdir($width, $height);
-            }
-        }
-
-        $path = implode('/', array_filter([
-            self::getStorageBasePath($isThumbnail),
-            $directory,
-            $subDir,
-            $filename
-        ]));
-
-        return Storage::disk(env('IMAGE_STORAGE_DISK'))->url($path);
-    }
-    */
 }

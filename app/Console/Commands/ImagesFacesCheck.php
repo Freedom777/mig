@@ -2,82 +2,103 @@
 
 namespace App\Console\Commands;
 
-use App\Jobs\FaceProcessJob;
+use App\Contracts\ImagePathServiceInterface;
+use App\Contracts\ImageQueueDispatcherInterface;
 use App\Models\Face;
 use App\Models\Image;
-use App\Services\ImagePathService;
-use App\Traits\QueueAbleTrait;
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\Log;
 
 class ImagesFacesCheck extends Command
 {
-    use QueueAbleTrait;
-
     protected $signature = 'images:faces:check';
 
-    protected $description = 'Take all images, which are have face_checked true or have recheck status and push them to queue.';
+    protected $description = 'Reprocess faces for images marked for recheck or with missing debug images';
 
-    public function handle()
-    {
-        $images = Image::where('faces_checked', 1)->orWhere('status', Image::STATUS_RECHECK)->get();
-
-        foreach ($images as $image) {
-            $debugImagePath = ImagePathService::getDebugImagePath($image);
-            if ($image->status == Image::STATUS_RECHECK || !is_file($debugImagePath)) {
-                $faces = $image->faces;
-                foreach ($faces as $face) {
-                    try {
-                        // Check for parent_id faces not equal to deleting face id
-                        // Not checking for equal image_id because same people on the photo is not possible ;)
-                        $checkFaces = $face->children;
-                        if ($checkFaces->count()) {
-                            // Get first face from the collection and remove it from collection
-                            $parentFace = $checkFaces->shift();
-                            $parentFace->parent_id = null;
-                            $parentFace->save();
-
-                            $parentFace->children->each(function ($child) use ($parentFace) {
-                                $child->parent_id = $parentFace->id;
-                                $child->save();
-                            });
-                        }
-                    } catch (\Exception $e) {
-                        $this->error('Failed to operate with face children (face ID: ' . $face->id . '): ' . $e->getMessage());
-                    }
-                }
-                Face::where('image_id', $image->id)->forceDelete();
-
-                if ($image->status == Image::STATUS_RECHECK && file_exists($debugImagePath)) {
-                    unlink($debugImagePath);
-                }
-
-                $image->faces_checked = 0;
-                $image->debug_filename = null;
-                $image->status = Image::STATUS_PROCESS;
-                $image->save();
-
-                $this->extractFaces($image->id);
-            }
-        }
+    public function __construct(
+        protected ImageQueueDispatcherInterface $dispatcher,
+        protected ImagePathServiceInterface $pathService
+    ) {
+        parent::__construct();
     }
 
-    private function extractFaces(int $imageId)
+    public function handle(): int
     {
-        try {
-            $response = self::pushToQueue(FaceProcessJob::class, config('queue.name.faces'), [
-                'image_id' => $imageId,
-            ]);
+        $images = Image::where('faces_checked', 1)
+            ->orWhere('status', Image::STATUS_RECHECK)
+            ->get();
 
-            $responseData = $response->getData();
-
-            if ($responseData->status === 'success') {
-                Log::info('Face job queued', ['image_id' => $imageId]);
-            } elseif ($responseData->status === 'exists') {
-                Log::info('Face job already in queue', ['image_id' => $imageId]);
-            }
-        } catch (\Exception $e) {
-            $this->error('Failed to send to API (image ID: ' . $imageId . '): ' . $e->getMessage());
+        if ($images->isEmpty()) {
+            $this->info('No images to recheck.');
+            return Command::SUCCESS;
         }
+
+        $this->info("Found {$images->count()} images to check.");
+
+        $reprocessed = 0;
+        $skipped = 0;
+        $errors = 0;
+
+        foreach ($images as $image) {
+            $debugImagePath = $this->pathService->getDebugImagePath($image);
+            $needsReprocess = $image->status === Image::STATUS_RECHECK
+                || !$debugImagePath
+                || !is_file($debugImagePath);
+
+            if (!$needsReprocess) {
+                $skipped++;
+                continue;
+            }
+
+            try {
+                $this->reprocessFaces($image, $debugImagePath);
+                $reprocessed++;
+            } catch (\Exception $e) {
+                $this->error("Failed for image {$image->id}: {$e->getMessage()}");
+                $errors++;
+            }
+        }
+
+        $this->info("Completed: {$reprocessed} reprocessed, {$skipped} skipped, {$errors} errors.");
+
+        return $errors > 0 ? Command::FAILURE : Command::SUCCESS;
+    }
+
+    private function reprocessFaces(Image $image, ?string $debugImagePath): void
+    {
+        // Переназначаем parent_id у дочерних лиц перед удалением
+        $faces = $image->faces;
+        foreach ($faces as $face) {
+            $children = $face->children;
+            if ($children->count()) {
+                // Первый ребёнок становится новым parent
+                $newParent = $children->shift();
+                $newParent->parent_id = null;
+                $newParent->save();
+
+                // Остальные дети переносятся к новому parent
+                foreach ($children as $child) {
+                    $child->parent_id = $newParent->id;
+                    $child->save();
+                }
+            }
+        }
+
+        // Удаляем все лица для этого изображения
+        Face::where('image_id', $image->id)->forceDelete();
+
+        // Удаляем debug файл если есть и это recheck
+        if ($image->status === Image::STATUS_RECHECK && $debugImagePath && file_exists($debugImagePath)) {
+            unlink($debugImagePath);
+        }
+
+        // Сбрасываем флаги
+        $image->update([
+            'faces_checked' => 0,
+            'debug_filename' => null,
+            'status' => Image::STATUS_PROCESS,
+        ]);
+
+        // Ставим в очередь на переобработку
+        $this->dispatcher->dispatchFace($image);
     }
 }

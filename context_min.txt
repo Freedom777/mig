@@ -1,0 +1,137 @@
+<artifact identifier="llm-context-compressed" type="text/markdown" title="Compressed LLM Context: Image Processing System">
+# LLM Context: Image Processing System v2
+System Overview
+Server: Hetzner CX32 (32 CPU, 64GB RAM, no GPU)
+Stack: Laravel + RabbitMQ + Supervisor + Face Recognition API (Python)
+Path: /var/www/photo, User: www-data:web, Perms: 775/664
+Core Patterns
+Queue System
+php// BaseProcessJob::pushToQueue - Deduplication via MD5 hash
+Queue::create(['queue_key' => md5(json_encode(['class' => $class] + $data))]);
+$class::dispatch($data)->onQueue($queue);
+
+// Lock pattern (all jobs)
+$lock = Cache::lock("{job-type}-processing:{image_id}", $timeout);
+Job Chain Pattern
+php// Conditional chaining with atomicity
+$queueKey = md5(json_encode(['class' => NextJob::class] + $data));
+Queue::create(['queue_key' => $queueKey]); // Dedup
+Bus::chain([new NextJob($data)])->onQueue('next')->dispatch(); // Atomic
+Jobs
+MetadataProcessJob
+
+Queue: metadata, Timeout: 60s, Workers: 1
+Extracts EXIF via ExifTool
+Conditional: If GPS exists → chains GeolocationProcessJob
+
+phpif (isset($m['GPSLatitude']) && isset($m['GPSLongitude']) || isset($m['GPSPosition'])) {
+    $this->queueGeolocationJob($metadata);
+}
+GeolocationProcessJob
+
+Queue: geolocation, Timeout: 120s, Workers: 1 (MUST BE 1!)
+Nominatim API: 1 req/sec rate limit (enforced via Cache lock)
+
+phpCache::put('nominatim-api-rate-limit', microtime(true), 5);
+usleep($waitTime * 1000000);
+```
+
+### ThumbnailProcessJob
+- **Queue**: `thumbnails`, **Timeout**: 300s, **Workers**: 2
+- Intervention Image + Imagick
+- Validates method: `['cover', 'scale', 'resize', 'contain']`
+
+### FaceProcessJob
+- **Queue**: `faces`, **Timeout**: 360s, **Workers**: 8
+- **API**: `POST http://127.0.0.1:5000/encode` → encodings (128 floats each)
+- **Compare**: Only with `faces` WHERE `parent_id IS NULL AND status='ok'`
+- **Threshold**: distance < 0.6 → set `parent_id`
+
+## Face Recognition API (CPU-only)
+
+### Structure
+```
+/var/www/photo/etc/face-api/
+├── server.py              # FastAPI (HOG model only, no CNN)
+├── requirements.txt       # No version pins
+└── install.sh             # Builds dlib with AVX
+
+/var/www/photo/face-api-venv/  # Python venv (not in git)
+Service
+ini# systemd: /etc/systemd/system/face-api.service
+ExecStart=/var/www/photo/face-api-venv/bin/gunicorn server:app \
+    -k uvicorn.workers.UvicornWorker --bind 127.0.0.1:5000 \
+    --workers 16 --threads 2 --timeout 300
+User=www-data Group=web UMask=0002
+Key Code (server.py)
+pythonSCALES = [1200, 1600, 2000]  # CPU-optimized
+# Only HOG model (no CNN/GPU)
+locations = face_recognition.face_locations(img, model='hog', number_of_times_to_upsample=1)
+encodings = face_recognition.face_encodings(img, locations)  # 128 floats each
+
+# Endpoints
+POST /encode → {encodings: [[128 floats]...], debug_image_path: str}
+POST /compare → {distances: [float...]}  # Euclidean distance
+GET /health → {status: 'ok', mode: 'cpu'}
+Database: faces
+sqlfaces: id, parent_id→faces.id, image_id→images.id, face_index(0,1,2...),
+       name, encoding(JSON 128 floats),
+       status ENUM('process','unknown','not_face','ok')
+Workflow: process (API) → manual review → ok (approved) | not_face (rejected)
+parent_id Logic: Groups same person across photos (set if distance < 0.6)
+Supervisor Config Pattern
+ini[program:photo-{queue}-worker]
+command=php /var/www/photo/artisan queue:work rabbitmq --queue={queue} --timeout={N}
+numprocs={N} user=www-data group=web umask=002
+stdout_logfile=/var/www/photo/storage/logs/supervisor-photo-{queue}.log
+Workers: thumbnails:2, metadata:1, geolocation:1 (!), faces:8
+Performance Tuning (CX32)
+
+Face API: 16 workers × 2 threads = ~50% CPU
+Face Jobs: 8 numprocs = ~40% CPU
+Total: ~60-70% CPU usage (balanced)
+Max: workers:24, numprocs:12 = ~90% CPU
+
+Critical Rules
+
+Geolocation: MUST be numprocs=1 (rate limit)
+Locks: Always {type}-processing:{image_id}
+Dedup: MD5 hash in queues.queue_key
+Chain: Use Bus::chain() for atomic dependencies
+Perms: Always www-data:web + umask=002
+Face Compare: Only vs parent_id IS NULL AND status='ok'
+
+Install Face API
+bashcd /var/www/photo
+sudo ./etc/face-api/install.sh  # Installs dlib, venv, systemd service
+sudo systemctl start face-api
+Logs
+All in /var/www/photo/storage/logs/:
+
+supervisor-photo-{queue}.log
+face-api-{access,error}.log
+
+Troubleshooting
+bash# Face API
+systemctl status face-api
+tail -f storage/logs/face-api-error.log
+
+# Jobs
+supervisorctl status
+tail -f storage/logs/supervisor-photo-faces.log
+
+# Test
+curl http://127.0.0.1:5000/health
+php artisan queue:monitor faces
+```
+
+## Config Files
+```
+etc/face-api/{server.py, requirements.txt, install.sh}
+etc/systemd/face-api.service
+etc/supervisor/photo-{thumbnails,metadata,geolocation,faces}-worker.conf
+
+Key Relationships:
+Upload → Thumbnail ∥ Metadata → (if GPS) Geolocation
+Face processing: separate flow, compares new faces vs existing parent_id IS NULL
+</artifact>

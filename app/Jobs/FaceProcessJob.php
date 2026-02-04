@@ -2,40 +2,40 @@
 
 namespace App\Jobs;
 
+use App\Contracts\ImagePathServiceInterface;
 use App\Models\Face;
 use App\Models\Image;
 use Illuminate\Support\Facades\Cache;
-use App\Services\ImagePathService;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
 class FaceProcessJob extends BaseProcessJob
 {
-    protected const FIELDS_NEEDED = [
-        'image_id',
-    ];
-    private const FACE_RECOGNITION_THRESHOLD = 0.6;
     private const FACE_API_TIMEOUT = 300; // 5 минут для CPU
 
-    public function handle()
+    /**
+     * Execute the job.
+     */
+    public function handle(ImagePathServiceInterface $pathService): void
     {
-        // Lock для предотвращения параллельной обработки
-        $lockKey = 'face-processing:' . $this->taskData['image_id'];
-        $lock = Cache::lock($lockKey, 360); // 6 минут
+        $imageId = $this->taskData['image_id'];
+        $lockKey = 'face-processing:' . $imageId;
+        $lock = Cache::lock($lockKey, 360);
 
         try {
-            $lock->block(360, function () {
-                $this->processFaces();
+            $lock->block(360, function () use ($pathService) {
+                $this->processFaces($pathService);
             });
         } catch (\Illuminate\Contracts\Cache\LockTimeoutException $e) {
             Log::warning('Could not acquire lock for face processing', [
-                'image_id' => $this->taskData['image_id']
+                'image_id' => $imageId
             ]);
             $this->release(60);
+            return;
         } catch (\Exception $e) {
             Log::error('Face processing failed', [
-                'image_id' => $this->taskData['image_id'],
+                'image_id' => $imageId,
                 'error' => $e->getMessage()
             ]);
             throw $e;
@@ -44,43 +44,44 @@ class FaceProcessJob extends BaseProcessJob
         }
     }
 
-    private function processFaces()
+    private function processFaces(ImagePathServiceInterface $pathService): void
     {
         $image = Image::findOrFail($this->taskData['image_id']);
-        $imagePath = ImagePathService::getImagePathByObj($image);
+        $imagePath = $pathService->getImagePathByObj($image);
 
-        // Увеличенный timeout для CPU
         $response = Http::timeout(self::FACE_API_TIMEOUT)
             ->attach('image', file_get_contents($imagePath), $image->filename)
-            ->post(config('app.face_api_url') . '/encode', [
+            ->post(config('image.face_api.url') . '/encode', [
                 'original_disk' => $image->disk,
                 'original_path' => $imagePath,
-                'image_debug_subdir' => ImagePathService::getImageDebugSubdir()
+                'image_debug_subdir' => $pathService->getImageDebugSubdir()
             ]);
 
         if (!$response->successful()) {
-            $image->last_error = 'HTTP ' . $response->status() . ': ' . Str::limit($response->body(), 200);
-            $image->save();
+            $image->update([
+                'last_error' => 'HTTP ' . $response->status() . ': ' . Str::limit($response->body(), 200)
+            ]);
             throw new \Exception('Face API failed: ' . $response->body());
         }
 
         $responseData = $response->json();
 
         if (isset($responseData['error'])) {
-            $image->last_error = $responseData['error'];
-            $image->save();
+            $image->update(['last_error' => $responseData['error']]);
             return;
         }
 
-        $image->last_error = null;
+        $image->update(['last_error' => null]);
         $newEncodings = $responseData['encodings'] ?? [];
 
-        // Оптимизация: сравниваем только с "мастер" записями (parent_id IS NULL, status='ok')
+        // Оптимизация: сравниваем только с "мастер" записями
         $faces = Face::query()
             ->whereNotNull('encoding')
-            ->whereNull('parent_id')  // только корневые лица
-            ->where('status', Face::STATUS_OK)    // только подтвержденные
+            ->whereNull('parent_id')
+            ->where('status', Face::STATUS_OK)
             ->get(['id', 'encoding']);
+
+        $threshold = config('image.face_api.threshold', 0.6);
 
         foreach ($newEncodings as $idx => $newEncoding) {
             $newFace = new Face();
@@ -89,7 +90,7 @@ class FaceProcessJob extends BaseProcessJob
             $newFace->face_index = $idx;
 
             if ($faces->isNotEmpty()) {
-                $parentId = $this->findMatchingFace($newEncoding, $faces);
+                $parentId = $this->findMatchingFace($newEncoding, $faces, $threshold);
                 if ($parentId) {
                     $newFace->parent_id = $parentId;
                 }
@@ -99,9 +100,10 @@ class FaceProcessJob extends BaseProcessJob
         }
 
         $debugPath = $responseData['debug_image_path'] ?? null;
-        $image->debug_filename = $debugPath ? basename($debugPath) : null;
-        $image->faces_checked = 1;
-        $image->save();
+        $image->update([
+            'debug_filename' => $debugPath ? basename($debugPath) : null,
+            'faces_checked' => 1,
+        ]);
 
         Log::info('Face processing completed', [
             'image_id' => $image->id,
@@ -109,12 +111,12 @@ class FaceProcessJob extends BaseProcessJob
         ]);
     }
 
-    private function findMatchingFace($newEncoding, $faces)
+    private function findMatchingFace(mixed $newEncoding, $faces, float $threshold): ?int
     {
         $knownEncodings = $faces->pluck('encoding')->toArray();
 
         $compareResponse = Http::timeout(60)
-            ->post(config('app.face_api_url') . '/compare', [
+            ->post(config('image.face_api.url') . '/compare', [
                 'encoding' => $newEncoding,
                 'candidates' => $knownEncodings,
             ]);
@@ -132,7 +134,7 @@ class FaceProcessJob extends BaseProcessJob
 
         $minValue = min($distances);
 
-        if ($minValue < self::FACE_RECOGNITION_THRESHOLD) {
+        if ($minValue < $threshold) {
             $minIndex = array_search($minValue, $distances);
             $matchedFace = $faces[$minIndex];
 

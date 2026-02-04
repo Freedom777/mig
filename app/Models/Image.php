@@ -3,24 +3,21 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Storage;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOneThrough;
 
 class Image extends Model
 {
-    const STATUS_PROCESS = 'process';
-
-    const STATUS_NOT_PHOTO = 'not_photo';
-
-    const STATUS_RECHECK = 'recheck'; // When on photo face exists, but not recognized
-    const STATUS_OK = 'ok';
+    public const STATUS_PROCESS = 'process';
+    public const STATUS_NOT_PHOTO = 'not_photo';
+    public const STATUS_RECHECK = 'recheck';
+    public const STATUS_OK = 'ok';
 
     protected $fillable = [
         'parent_id',
         'image_geolocation_point_id',
-
         'disk',
-
         'path',
         'filename',
         'debug_filename',
@@ -31,169 +28,117 @@ class Image extends Model
         'phash',
         'created_at_file',
         'updated_at_file',
-
         'metadata',
         'faces_checked',
-
         'thumbnail_path',
         'thumbnail_filename',
         'thumbnail_method',
         'thumbnail_width',
         'thumbnail_height',
-
         'status',
         'last_error'
     ];
 
-    // Мутатор для записи
-    public function setHashAttribute($value)
+    // ==========================================
+    // Mutators & Accessors
+    // ==========================================
+
+    public function setHashAttribute($value): void
     {
         $this->attributes['hash'] = hex2bin($value);
     }
 
-    // Акцессор для чтения
-    public function getHashAttribute($value)
+    public function getHashAttribute($value): ?string
     {
-        return bin2hex($value);
+        return $value ? bin2hex($value) : null;
     }
 
-    public function setPhashAttribute($value)
+    public function setPhashAttribute($value): void
     {
         $this->attributes['phash'] = hex2bin($value);
     }
 
-    // Акцессор для чтения
-    public function getPhashAttribute($value)
+    public function getPhashAttribute($value): ?string
     {
-        return bin2hex($value);
+        return $value ? bin2hex($value) : null;
     }
 
-    public function geolocationPoint()
+    // ==========================================
+    // Relationships
+    // ==========================================
+
+    public function geolocationPoint(): BelongsTo
     {
         return $this->belongsTo(ImageGeolocationPoint::class);
     }
 
-    public function geolocationAddress()
+    public function geolocationAddress(): HasOneThrough
     {
         return $this->hasOneThrough(
             ImageGeolocationAddress::class,
             ImageGeolocationPoint::class,
-            'id',                           // Foreign key on points table
-            'id',                           // Foreign key on addresses table
-            'image_geolocation_point_id',   // Local key on images table
-            'image_geolocation_address_id'  // Local key on points table
+            'id',
+            'id',
+            'image_geolocation_point_id',
+            'image_geolocation_address_id'
         );
     }
 
-    public function faces()
+    public function faces(): HasMany
     {
         return $this->hasMany(Face::class, 'image_id', 'id');
     }
 
-    public static function previous($id, $status = null)
-    {
-        $image = static::whereNull('parent_id')->where('id', '<', $id)
-            ->orderBy('id', 'asc');
-        if ($status) {
-            $image = $image->where('status', $status);
-        }
-        return $image->first();
-    }
-
-    public static function next($id, $status = null)
-    {
-        $image = static::whereNull('parent_id')->where('id', '>', $id)
-            ->orderBy('id', 'asc');
-        if ($status) {
-            $image = $image->where('status', $status);
-        }
-        return $image->first();
-    }
-
-    public function children()
+    public function children(): HasMany
     {
         return $this->hasMany(Image::class, 'parent_id');
     }
 
-    public function parent()
+    public function parent(): BelongsTo
     {
         return $this->belongsTo(Image::class, 'parent_id');
     }
 
-    public static function findSimilarImageId(string $hexHash, int $maxDistance = 5): ?int
+    // ==========================================
+    // Query Scopes / Static Query Methods
+    // ==========================================
+
+    /**
+     * Найти предыдущее изображение
+     */
+    public static function previous(int $id, ?string $status = null): ?self
     {
-        return self::query()
-            ->whereRaw('BIT_COUNT(phash ^ UNHEX(?)) < ?', [$hexHash, $maxDistance])
-            ->orderByRaw('BIT_COUNT(phash ^ UNHEX(?)) ASC', [$hexHash])
-            ->limit(1)
-            ->value('id');
+        $query = static::whereNull('parent_id')
+            ->where('id', '<', $id)
+            ->orderBy('id', 'desc'); // FIX: должен быть desc для "предыдущего"
+
+        if ($status) {
+            $query->where('status', $status);
+        }
+
+        return $query->first();
     }
 
     /**
-     * @param string $diskLabel
-     * @param string $sourcePath
-     * @param string $filename
-     * @param bool $updateIfExists In general cases = true, for run other operations for image again (thumbnail, geolocation, etc ...)
-     * @return array|null
+     * Найти следующее изображение
      */
-    public static function prepareData(string $diskLabel, string $sourcePath, string $filename, bool $updateIfExists = true): ?array
+    public static function next(int $id, ?string $status = null): ?self
     {
-        $disk = Storage::disk($diskLabel);
-        $filePath = $disk->path($sourcePath) . '/' . $filename;
+        $query = static::whereNull('parent_id')
+            ->where('id', '>', $id)
+            ->orderBy('id', 'asc');
 
-        if ($updateIfExists) {
-            // Проверяем существование записи
-            $existingImage = Image::where([
-                'disk' => $diskLabel,
-                'path' => $sourcePath,
-                'filename' => $filename,
-            ])->exists();
-
-            // Если изображение уже есть в базе - прерываем обработку
-            if ($existingImage) {
-                return null;
-            }
+        if ($status) {
+            $query->where('status', $status);
         }
 
-        return [
-            'source_disk' => $diskLabel,
-            'source_path' => $sourcePath,
-            'source_filename' => $filename,
-            'size' => filesize($filePath),
-            'created_at_file' => date('Y-m-d H:i:s', filectime($filePath)),
-            'updated_at_file' => date('Y-m-d H:i:s', filemtime($filePath)),
-        ];
+        return $query->first();
     }
 
-    public static function updateInsert(array $imageData) : Image|null
-    {
-        $imagePath = $imageData['source_path'] . '/' . $imageData['source_filename'];
-
-        try {
-            $image = Image::updateOrCreate(
-                [
-                    'disk' => $imageData['source_disk'],
-                    'path' => $imageData['source_path'],
-                    'filename' => $imageData['source_filename']
-                ],
-                [
-                    // 'parent_id' => $imageData['parent_id'],
-                    // 'width' => $imageData['width'],
-                    // 'height' => $imageData['height'],
-                    'size' => $imageData['size'],
-                    // 'hash' => $imageData['hash'],
-                    // 'phash' => $imageData['phash'],
-                    'created_at_file' => $imageData['created_at_file'],
-                    'updated_at_file' => $imageData['updated_at_file'],
-                ]
-            );
-
-            Log::info('Processed: ' . $imagePath);
-
-            return $image;
-        } catch (\Exception $e) {
-            Log::error('Failed to process image ' . $imagePath . ': ' . $e->getMessage());
-            return null;
-        }
-    }
+    // ==========================================
+    // REMOVED: Бизнес-логика перенесена в ImageRepository
+    // - prepareData() -> ImageRepository::prepareImageData()
+    // - updateInsert() -> ImageRepository::updateOrCreate()
+    // - findSimilarImageId() -> ImageRepository::findSimilarByPhash()
+    // ==========================================
 }

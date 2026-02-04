@@ -2,13 +2,8 @@
 
 namespace App\Console\Commands;
 
-use App\Jobs\BaseProcessJob;
-use App\Jobs\ImageProcessJob;
-use App\Models\Image;
-use App\Services\ApiClient;
-use App\Services\ImagePathService;
+use App\Contracts\ImageServiceInterface;
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 
 class ImagesProcess extends Command
@@ -16,36 +11,35 @@ class ImagesProcess extends Command
     protected $signature = 'images:process
                             {disk : Source disk}
                             {source : Source directory with images}
-                            {--target= : Target subdirectory in storage}';
+                            {--skip-existing : Skip images that already exist in database}';
 
-    protected $description = 'Process images: copy, get basic info';
+    protected $description = 'Process images: copy, get basic info, queue for processing';
 
-    protected ApiClient $apiClient;
-
-    public function __construct(ApiClient $apiClient)
-    {
+    public function __construct(
+        protected ImageServiceInterface $imageService
+    ) {
         parent::__construct();
-        $this->apiClient = $apiClient;
     }
 
-    public function handle()
+    public function handle(): int
     {
-        $diskLabel = $this->argument('disk') ?? 'local';
+        $diskLabel = $this->argument('disk');
         $disk = Storage::disk($diskLabel);
-        $source = $this->argument('source') ?? '.';
+        $source = $this->argument('source');
+        $skipExisting = $this->option('skip-existing');
 
         if (!is_dir($disk->path($source))) {
-            $this->error('It\'s not a directory, disk ' . $diskLabel . ', directory: ' . $source);
-            return 1;
+            $this->error("Not a directory: disk '{$diskLabel}', path: '{$source}'");
+            return Command::FAILURE;
         }
 
-        // Обрабатываем исходную директорию рекурсивно
-        $this->processDirectory($diskLabel, $source);
+        $this->processDirectory($diskLabel, $source, $skipExisting);
         $this->info('Image processing completed');
-        return 0;
+
+        return Command::SUCCESS;
     }
 
-    protected function processDirectory(string $diskLabel, string $source)
+    protected function processDirectory(string $diskLabel, string $source, bool $skipExisting): void
     {
         $disk = Storage::disk($diskLabel);
         $directories = $disk->directories($source);
@@ -55,70 +49,62 @@ class ImagesProcess extends Command
             return str_ends_with($lowerItem, '.jpg') || str_ends_with($lowerItem, '.jpeg');
         }));
 
-        if (!$directories && !$files){
-            $this->warn('Nothing to process in directory, disk ' . $diskLabel . ', directory: ' . $source);
+        if (!$directories && !$files) {
+            $this->warn("Nothing to process: disk '{$diskLabel}', path: '{$source}'");
             return;
         }
 
         foreach ($files as $file) {
-            try {
-                if (Image::where('disk', $diskLabel)->where('path', $source)->where('filename', $file)->exists()) {
-                    $this->info('Skipped file, exists: ' . $diskLabel . '//' . $source . '/' . $file);
-                    continue;
-                }
-                $this->processImage($diskLabel, $source, $file);
-            } catch (\Exception $e) {
-                $this->warn('Failed to process image ' . $file . ': ' . $e->getMessage());
-                continue;
-            }
+            $this->processImage($diskLabel, $source, $file, $skipExisting);
         }
 
         // Рекурсивно обрабатываем подкаталоги
         foreach ($directories as $subDir) {
             $basename = basename($subDir);
 
-            // исключаем debug и подпапки формата WIDTHxHEIGHT (например 300x200)
-            if (
-                strtolower($basename) === 'debug' ||
-                preg_match('/^\d+x\d+$/', $basename)
-            ) {
-                $this->info('Skipped directory: ' . $subDir);
+            // Исключаем debug и подпапки формата WIDTHxHEIGHT
+            if ($this->shouldSkipDirectory($basename)) {
+                $this->info("Skipped directory: {$subDir}");
                 continue;
             }
 
-            $this->processDirectory($diskLabel, $subDir);
+            $this->processDirectory($diskLabel, $subDir, $skipExisting);
         }
     }
 
-    private function processImage(string $diskLabel, string $sourcePath, string $filename)
+    protected function processImage(string $disk, string $path, string $filename, bool $skipExisting): void
     {
-        $preparedData = Image::prepareData($diskLabel, $sourcePath, $filename);
-        $image = Image::updateInsert($preparedData);
-
-        if (!$image) {
-            Log::error('Failed to insert image', [
-                'disk' => config('image.paths.disk'),
-                'path' => $sourcePath,
-                'filename' => $filename
-            ]);
-            $this->error('Failed to insert image');
-        } else {
-            $response = BaseProcessJob::pushToQueue(
-                ImageProcessJob::class,
-                config('queue.name.images'),
-                [
-                    'image_id' => $image->id,
-                ]
+        try {
+            $result = $this->imageService->processNewUpload(
+                disk: $disk,
+                path: $path,
+                filename: $filename,
+                skipIfExists: $skipExisting
             );
 
-            $responseData = $response->getData();
-            if ($responseData->status === 'success') {
-                Log::info('Image job queued', ['image_id' => $image->id]);
-                $this->info('Image job queued: ID = ' . $image->id);
-            } elseif ($responseData->status === 'exists') {
-                Log::info('Image job already in queue', ['image_id' => $image->id]);
-                $this->info('Image job already in queue: ID = ' . $image->id);
+            if ($result['success']) {
+                $this->info("Queued: {$disk}//{$path}/{$filename} (ID: {$result['image']->id})");
+            } else {
+                $this->warn("Skipped: {$disk}//{$path}/{$filename} - {$result['message']}");
             }
+
+        } catch (\Exception $e) {
+            $this->error("Failed: {$disk}//{$path}/{$filename} - {$e->getMessage()}");
         }
+    }
+
+    protected function shouldSkipDirectory(string $basename): bool
+    {
+        // Пропускаем debug директории
+        if (strtolower($basename) === 'debug') {
+            return true;
+        }
+
+        // Пропускаем директории thumbnail (формат WIDTHxHEIGHT)
+        if (preg_match('/^\d+x\d+$/', $basename)) {
+            return true;
+        }
+
+        return false;
     }
 }

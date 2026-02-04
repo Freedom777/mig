@@ -1,0 +1,844 @@
+<artifact identifier="chat-context-summary" type="text/markdown" title="Контекст чата: Настройка системы обработки изображений">
+# Контекст чата: Настройка системы обработки изображений с распознаванием лиц
+Дата: 21 января 2026
+
+1. ИСХОДНАЯ ЗАДАЧА
+Контекст проекта
+
+Сервер: Hetzner CX32 (32 CPU cores, 64GB RAM, без GPU)
+Проект: Laravel приложение для обработки фотографий
+Путь: /var/www/photo
+Пользователь: www-data, группа: web
+Очереди: RabbitMQ + Supervisor
+Текущие джобы:
+
+ImageProcessJob
+MetadataProcessJob (ExifTool)
+ThumbnailProcessJob (Intervention Image + Imagick)
+GeolocationProcessJob (Nominatim API)
+
+
+
+Цель
+Настроить условный запуск джобов в очередь и интегрировать систему распознавания лиц.
+
+2. АРХИТЕКТУРА ДЖОБОВ
+2.1 Базовый класс - BaseProcessJob
+php// Трейт QueueAbleTrait с методом pushToQueue
+public static function pushToQueue($className, $queueName, $data) {
+    $queueKey = md5(json_encode(['class' => $className]+$data));
+    $objectName = explode(' ', Str::headline($className))[0];
+
+    try {
+        Queue::create(['queue_key' => $queueKey]);
+        $className::dispatch($data)->onQueue($queueName);
+        return response()->json([
+            'status' => 'success',
+            'message' => $objectName . ' added to processing queue',
+            'data' => $data
+        ]);
+    } catch (QueryException $e) {
+        return response()->json([
+            'status' => 'exists',
+            'message' => $objectName . ' already exists in processing queue',
+            'data' => $data
+        ]);
+    }
+}
+Особенности:
+
+Дедупликация через MD5 хеш
+Таблица queues с полем queue_key (unique)
+Возвращает JSON response
+
+
+2.2 MetadataProcessJob
+Задача: Извлечение EXIF метаданных через ExifTool
+Ключевые особенности:
+php// Lock на основе image_id
+$lockKey = 'metadata-processing:' . $this->taskData['image_id'];
+$lock = Cache::lock($lockKey, 30);
+
+// Условный запуск GeolocationProcessJob
+if ($metadata && $this->hasGeodata($metadata)) {
+    $this->queueGeolocationJob($metadata);
+}
+
+// Использует Bus::chain() для атомарности
+Bus::chain([
+    new GeolocationProcessJob($jobData)
+])->onQueue('geolocation')->dispatch();
+Проверка GPS данных:
+phpprivate function hasGeodata(array $metadata): bool
+{
+    return (isset($metadata['GPSLatitude']) && isset($metadata['GPSLongitude']))
+        || isset($metadata['GPSPosition']);
+}
+Постановка в очередь с дедупликацией:
+phpprivate function queueGeolocationJob(array $metadata): void
+{
+    $queueKey = md5(json_encode([
+        'class' => GeolocationProcessJob::class
+    ] + $jobData));
+
+    try {
+        \App\Models\Queue::create(['queue_key' => $queueKey]);
+        Bus::chain([
+            new GeolocationProcessJob($jobData)
+        ])->onQueue('geolocation')->dispatch();
+    } catch (\Illuminate\Database\QueryException $e) {
+        Log::info('Geolocation job already queued');
+    }
+}
+
+2.3 GeolocationProcessJob
+Задача: Определение адреса по GPS координатам через Nominatim API
+Ключевые особенности:
+php// Rate limit для Nominatim (1 запрос в секунду)
+private const NOMINATIM_RATE_LIMIT_SECONDS = 1;
+
+private function waitForRateLimit(): void
+{
+    $lockKey = 'nominatim-api-rate-limit';
+    $lastCallTime = Cache::get($lockKey);
+
+    if ($lastCallTime) {
+        $timeSinceLastCall = microtime(true) - $lastCallTime;
+        $waitTime = self::NOMINATIM_RATE_LIMIT_SECONDS - $timeSinceLastCall;
+
+        if ($waitTime > 0) {
+            $waitMicroseconds = (int)($waitTime * 1000000);
+            usleep($waitMicroseconds);
+        }
+    }
+
+    Cache::put($lockKey, microtime(true), 5);
+}
+Извлечение координат:
+phpprivate function extractCoordinates(array $metadata): array
+{
+    if (isset($metadata['GPSLatitude']) && isset($metadata['GPSLongitude'])) {
+        return [
+            (float) $metadata['GPSLatitude'],
+            (float) $metadata['GPSLongitude']
+        ];
+    }
+
+    if (isset($metadata['GPSPosition'])) {
+        $parts = explode(' ', $metadata['GPSPosition']);
+        if (count($parts) >= 2) {
+            return [(float) $parts[0], (float) $parts[1]];
+        }
+    }
+
+    throw new \Exception('No valid GPS coordinates found');
+}
+Важно: Supervisor должен иметь numprocs=1 для соблюдения rate limit!
+
+2.4 ThumbnailProcessJob
+Задача: Создание thumbnail через Intervention Image
+Ключевые особенности:
+php// Lock на основе image_id
+$lockKey = 'thumbnail-processing:' . $this->taskData['image_id'];
+$lock = Cache::lock($lockKey, 60);
+
+// Создание директории с правильными правами
+if (!$disk->exists($targetDir)) {
+    $disk->makeDirectory($targetDir);
+    $fullTargetDirPath = $disk->path($targetDir);
+    chmod($fullTargetDirPath, 0755);
+}
+
+// Проверка существующего thumbnail
+if (file_exists($targetPath)) {
+    Log::info('Thumbnail already exists, skipping');
+    return;
+}
+
+// Валидация метода
+if (!in_array($method, ['cover', 'scale', 'resize', 'contain'])) {
+    throw new \InvalidArgumentException('Invalid thumbnail method');
+}
+
+// Cleanup при ошибке
+if (file_exists($targetPath)) {
+    @unlink($targetPath);
+}
+
+2.5 FaceProcessJob
+Задача: Распознавание лиц через Face Recognition API
+Структура БД faces:
+sqlCREATE TABLE `faces` (
+  `id` bigint UNSIGNED NOT NULL,
+  `parent_id` bigint UNSIGNED DEFAULT NULL,  -- FK на faces.id (группировка лиц одного человека)
+  `image_id` bigint UNSIGNED DEFAULT NULL,   -- FK на images.id
+  `face_index` tinyint UNSIGNED NOT NULL,    -- порядковый номер лица на фото (0, 1, 2...)
+  `name` varchar(255) DEFAULT NULL,          -- имя человека
+  `encoding` json DEFAULT NULL,              -- JSON массив из 128 float значений
+  `status` enum('process','unknown','not_face','ok') NOT NULL DEFAULT 'process',
+  `created_at` timestamp NULL DEFAULT NULL,
+  `updated_at` timestamp NULL DEFAULT NULL,
+  `deleted_at` timestamp NULL DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+```
+
+**Workflow статусов:**
+- `process` → готово к обработке (default после API)
+- `unknown` → лицо незнакомого человека (не используется)
+- `not_face` → ошибка распознавания, это не лицо
+- `ok` → лицо распознано и имя проставлено вручную
+
+**Логика parent_id:**
+```
+Face #1 (id=1, parent_id=NULL, name='Oleg', status='ok') ← мастер-запись
+Face #5 (id=5, parent_id=1, status='process') ← похож на #1 по distance
+Face #8 (id=8, parent_id=1, status='process') ← тоже похож на #1
+Алгоритм сравнения:
+phpprivate const FACE_RECOGNITION_THRESHOLD = 0.6;
+
+// 1. Получаем все существующие "мастер" лица
+$faces = Face::whereNotNull('encoding')
+    ->whereNull('parent_id')  // только корневые
+    ->where('status', 'ok')   // только подтвержденные
+    ->get(['id', 'encoding']);
+
+// 2. Для каждого нового лица
+foreach ($newEncodings as $idx => $newEncoding) {
+    if ($faces->isNotEmpty()) {
+        $knownEncodings = $faces->pluck('encoding')->toArray();
+
+        // 3. Сравниваем через API /compare
+        $compareResponse = Http::post(config('app.face_api_url') . '/compare', [
+            'encoding'   => $newEncoding,
+            'candidates' => $knownEncodings,
+        ]);
+
+        // 4. Находим минимальное расстояние
+        $distances = $compareResponse->json()['distances'] ?? [];
+        if ($distances) {
+            $minValue = min($distances);
+
+            // 5. Если похожесть > 60% → устанавливаем parent_id
+            if ($minValue < self::FACE_RECOGNITION_THRESHOLD) {
+                $minIndex = array_search($minValue, $distances);
+                $matchedFace = $faces[$minIndex];
+                $newFace->parent_id = $matchedFace->id;
+            }
+        }
+    }
+
+    $newFace->save();
+    $faces->push($newFace); // добавляем для следующих сравнений в рамках этого фото
+}
+
+3. FACE RECOGNITION API (CPU-ONLY)
+3.1 Архитектура
+Исходная конфигурация (WSL2 с GPU):
+yamlface-api:
+    build:
+        context: ./docker/face-api
+        dockerfile: Dockerfile
+    runtime: nvidia
+    deploy:
+        resources:
+            devices:
+                - driver: nvidia
+                  count: all
+                  capabilities: [gpu]
+    ports:
+        - "5000:5000"
+    volumes:
+        - "/mnt/d/Fotos:/dfotos"
+```
+
+**Новая конфигурация (Hetzner CX32 без Docker):**
+- Без Docker, прямо на сервере
+- CPU-only (без CUDA/cuDNN)
+- Python venv: `/var/www/photo/face-api-venv`
+- Код: `/var/www/photo/etc/face-api/`
+- Systemd service для автозапуска
+- Gunicorn + Uvicorn (16 workers × 2 threads)
+
+---
+
+### 3.2 Структура проекта
+```
+/var/www/photo/
+├── app/
+├── etc/
+│   ├── face-api/
+│   │   ├── server.py                  # FastAPI сервер (CPU-only)
+│   │   ├── requirements.txt
+│   │   ├── install.sh                 # скрипт установки
+│   │   └── README.md
+│   ├── supervisor/
+│   │   ├── photo-thumbnails-worker.conf
+│   │   ├── photo-metadata-worker.conf
+│   │   ├── photo-geolocation-worker.conf
+│   │   ├── photo-face-worker.conf     # новый
+│   │   └── README.md
+│   └── systemd/
+│       ├── face-api.service
+│       └── README.md
+├── face-api-venv/                     # Python venv (не в git)
+└── storage/
+    └── logs/
+        ├── face-api-access.log
+        └── face-api-error.log
+
+3.3 Установочный скрипт
+etc/face-api/install.sh:
+bash#!/bin/bash
+set -e
+
+PROJECT_ROOT="/var/www/photo"
+VENV_PATH="$PROJECT_ROOT/face-api-venv"
+FACE_API_DIR="$PROJECT_ROOT/etc/face-api"
+
+# 1. System packages
+sudo apt-get update
+sudo apt-get install -y \
+    python3 python3-dev python3-pip python3-venv \
+    cmake build-essential \
+    libopenblas-dev liblapack-dev \
+    libx11-dev libgtk-3-dev \
+    libsm6 libxext6 libxrender-dev libglib2.0-0 \
+    git fonts-dejavu-core
+
+# 2. Create venv
+cd "$PROJECT_ROOT"
+python3 -m venv "$VENV_PATH"
+source "$VENV_PATH/bin/activate"
+pip install --upgrade pip setuptools wheel packaging
+
+# 3. Build dlib (CPU-only)
+cd /tmp
+git clone --depth 1 https://github.com/davisking/dlib.git
+cd dlib && mkdir -p build && cd build
+cmake .. -DUSE_AVX_INSTRUCTIONS=1
+cmake --build . --config Release
+cd .. && python3 setup.py install
+cd /tmp && rm -rf dlib
+
+# 4. Install Python packages
+pip install -r "$FACE_API_DIR/requirements.txt"
+pip install --no-deps face_recognition
+pip install git+https://github.com/ageitgey/face_recognition_models
+pip install opencv-python-headless
+
+# 5. Setup directories and permissions
+mkdir -p "$PROJECT_ROOT/storage/logs"
+sudo chown -R www-data:web "$PROJECT_ROOT/storage/logs"
+sudo chmod -R 775 "$PROJECT_ROOT/storage/logs"
+sudo chown -R www-data:web "$VENV_PATH"
+sudo chmod -R 775 "$VENV_PATH"
+sudo chown -R www-data:web "$FACE_API_DIR"
+sudo chmod -R 775 "$FACE_API_DIR"
+
+# 6. Install systemd service
+sudo cp "$PROJECT_ROOT/etc/systemd/face-api.service" /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable face-api
+
+3.4 Python зависимости
+etc/face-api/requirements.txt:
+txtfastapi
+uvicorn[standard]
+gunicorn
+python-multipart
+numpy
+Pillow
+opencv-python-headless
+imagehash
+Важно: Без жестких версий для совместимости с Python 3.12
+
+3.5 FastAPI сервер
+etc/face-api/server.py (ключевые изменения для CPU):
+pythonimport face_recognition
+import imagehash
+
+# CPU-оптимизированные размеры (меньше чем для GPU)
+SCALES = [1200, 1600, 2000]
+
+def detect_faces_multiscale(img_orig):
+    """CPU-only: используем только HOG model"""
+    for dim in SCALES:
+        img = resize_image_if_needed(img_orig, max_dim=dim)
+        image_np = image_to_np_array(img)
+
+        # Только HOG для CPU (CNN требует GPU)
+        locations = face_recognition.face_locations(
+            image_np,
+            model='hog',
+            number_of_times_to_upsample=1
+        )
+
+        if locations:
+            return {
+                "locations": locations,
+                "image_np": image_np,
+                "scale": dim,
+                "model": "hog"
+            }
+
+    return {"locations": [], "image_np": last_np, "scale": None, "model": None}
+
+@app.post("/encode")
+async def encode_faces(
+    image: UploadFile = File(...),
+    original_path: str = Form(...),
+    original_disk: str = Form(...),
+    image_debug_subdir: str = Form("debug")
+):
+    # ... обработка ...
+    result = detect_faces_multiscale(img_orig)
+    locations = result["locations"]
+
+    encodings = []
+    if locations:
+        encodings = face_recognition.face_encodings(image_np, locations)
+
+    debug_path = save_debug_image(image_np, locations, ...)
+
+    return JSONResponse(content={
+        "encodings": [e.tolist() for e in encodings],
+        "debug_image_path": debug_path,
+    })
+
+@app.post("/compare")
+async def compare_faces(data: CompareRequest):
+    encoding = np.array(data.encoding)
+    candidates = [np.array(e) for e in data.candidates]
+
+    distances = []
+    for candidate in candidates:
+        dist = np.linalg.norm(candidate - encoding)
+        distances.append(float(dist))
+
+    return JSONResponse(content={'distances': distances})
+
+@app.get("/health")
+async def health_check():
+    return {"status": "ok", "mode": "cpu"}
+Отличия от GPU версии:
+
+❌ Убран CNN model (только HOG)
+❌ Убрана обработка CUDA OOM
+✅ Уменьшены размеры изображений (1200-2000px вместо 1600-2600px)
+✅ number_of_times_to_upsample=1 для скорости
+
+
+3.6 Systemd service
+etc/systemd/face-api.service:
+ini[Unit]
+Description=Face Recognition API Service (CPU-only)
+After=network.target
+
+[Service]
+Type=notify
+User=www-data
+Group=web
+WorkingDirectory=/var/www/photo/etc/face-api
+Environment="PATH=/var/www/photo/face-api-venv/bin"
+ExecStart=/var/www/photo/face-api-venv/bin/gunicorn server:app \
+    -k uvicorn.workers.UvicornWorker \
+    --bind 127.0.0.1:5000 \
+    --workers 16 \
+    --threads 2 \
+    --timeout 300 \
+    --access-logfile /var/www/photo/storage/logs/face-api-access.log \
+    --error-logfile /var/www/photo/storage/logs/face-api-error.log \
+    --log-level info
+
+UMask=0002
+
+Restart=always
+RestartSec=10
+
+LimitNOFILE=65536
+MemoryMax=12G
+CPUQuota=1600%
+
+[Install]
+WantedBy=multi-user.target
+Управление:
+bashsudo systemctl start face-api
+sudo systemctl stop face-api
+sudo systemctl restart face-api
+sudo systemctl status face-api
+sudo journalctl -u face-api -f
+
+3.7 Supervisor для Face Worker
+etc/supervisor/photo-face-worker.conf:
+ini[program:photo-face-worker]
+process_name=%(program_name)s_%(process_num)02d
+command=php /var/www/photo/artisan queue:work rabbitmq --queue=faces --sleep=3 --tries=3 --timeout=360 --max-time=3600
+autostart=true
+autorestart=true
+stopasgroup=true
+killasgroup=true
+numprocs=8
+user=www-data
+group=web
+umask=002
+redirect_stderr=true
+stdout_logfile=/var/www/photo/storage/logs/supervisor-photo-faces.log
+stdout_logfile_maxbytes=20MB
+stdout_logfile_backups=5
+stopwaitsecs=60
+
+4. НАСТРОЙКА ПРОИЗВОДИТЕЛЬНОСТИ
+4.1 Рекомендуемые параметры для CX32
+Face API (Gunicorn):
+
+--workers 16 (половина от 32 ядер для CPU-intensive задач)
+--threads 2
+--timeout 300 (5 минут на обработку)
+
+Supervisor (Face Worker):
+
+numprocs=8 (8 изображений обрабатываются одновременно)
+
+Итого: ~50-60% загрузки CPU
+4.2 Варианты настройки
+РежимGunicorn workersSupervisor numprocsCPU usageКонсервативный84~40%Сбалансированный168~60%Максимальный2412~90%
+4.3 Мониторинг
+bash# CPU usage
+htop
+
+# Load average (должен быть ~20-28 для CX32)
+uptime
+
+# Количество активных workers
+ps aux | grep gunicorn | wc -l
+ps aux | grep "queue:work" | wc -l
+
+# Логи производительности
+tail -f /var/www/photo/storage/logs/face-api-error.log | grep "took"
+
+5. SUPERVISOR КОНФИГУРАЦИЯ
+Полная конфигурация всех workers
+ini[group:photo-workers]
+programs=photo-thumbnails-worker,photo-metadata-worker,photo-geolocation-worker,photo-face-worker
+priority=999
+
+[program:photo-thumbnails-worker]
+process_name=%(program_name)s_%(process_num)02d
+command=php /var/www/photo/artisan queue:work rabbitmq --queue=thumbnails --sleep=3 --tries=3 --timeout=300 --max-time=3600
+autostart=true
+autorestart=true
+stopasgroup=true
+killasgroup=true
+numprocs=2
+user=www-data
+group=web
+umask=002
+redirect_stderr=true
+stdout_logfile=/var/www/photo/storage/logs/supervisor-photo-thumbnails.log
+stdout_logfile_maxbytes=20MB
+stdout_logfile_backups=5
+
+[program:photo-metadata-worker]
+process_name=%(program_name)s_%(process_num)02d
+command=php /var/www/photo/artisan queue:work rabbitmq --queue=metadata --sleep=3 --tries=3 --timeout=60 --max-time=3600
+autostart=true
+autorestart=true
+stopasgroup=true
+killasgroup=true
+numprocs=1
+user=www-data
+group=web
+umask=002
+redirect_stderr=true
+stdout_logfile=/var/www/photo/storage/logs/supervisor-photo-metadata.log
+stdout_logfile_maxbytes=20MB
+stdout_logfile_backups=5
+
+[program:photo-geolocation-worker]
+process_name=%(program_name)s_%(process_num)02d
+command=php /var/www/photo/artisan queue:work rabbitmq --queue=geolocation --sleep=3 --tries=5 --timeout=120 --max-time=3600
+autostart=true
+autorestart=true
+stopasgroup=true
+killasgroup=true
+numprocs=1
+user=www-data
+group=web
+umask=002
+redirect_stderr=true
+stdout_logfile=/var/www/photo/storage/logs/supervisor-photo-geolocation.log
+stdout_logfile_maxbytes=20MB
+stdout_logfile_backups=5
+
+[program:photo-face-worker]
+process_name=%(program_name)s_%(process_num)02d
+command=php /var/www/photo/artisan queue:work rabbitmq --queue=faces --sleep=3 --tries=3 --timeout=360 --max-time=3600
+autostart=true
+autorestart=true
+stopasgroup=true
+killasgroup=true
+numprocs=8
+user=www-data
+group=web
+umask=002
+redirect_stderr=true
+stdout_logfile=/var/www/photo/storage/logs/supervisor-photo-faces.log
+stdout_logfile_maxbytes=20MB
+stdout_logfile_backups=5
+stopwaitsecs=60
+Управление
+bash# Применение изменений
+sudo supervisorctl reread
+sudo supervisorctl update
+
+# Управление группой
+sudo supervisorctl start photo-workers:*
+sudo supervisorctl stop photo-workers:*
+sudo supervisorctl restart photo-workers:*
+
+# Статус
+sudo supervisorctl status
+```
+
+---
+
+## 6. ПРАВА ДОСТУПА
+
+### 6.1 Схема прав
+```
+Owner: www-data
+Group: web
+Directories: 775 (rwxrwxr-x)
+Files: 664 (rw-rw-r--)
+6.2 Настройка
+bash# Проверка группы web
+getent group web
+
+# Создание группы (если не существует)
+sudo groupadd web
+
+# Добавление пользователей
+sudo usermod -a -G web www-data
+sudo usermod -a -G web YOUR_USERNAME
+
+# Установка прав на проект
+sudo chown -R www-data:web /var/www/photo
+sudo find /var/www/photo -type d -exec chmod 775 {} \;
+sudo find /var/www/photo -type f -exec chmod 664 {} \;
+
+# Исполняемые скрипты
+sudo chmod 775 /var/www/photo/etc/face-api/install.sh
+6.3 UMask в сервисах
+Systemd:
+iniUMask=0002
+Supervisor:
+iniumask=002
+Это гарантирует что новые файлы создаются с правами группы.
+
+7. ВАЖНЫЕ МОМЕНТЫ
+7.1 Rate Limiting
+
+Geolocation (Nominatim): 1 запрос в секунду (СТРОГО!)
+Face API: без ограничений (свой сервер)
+
+7.2 Lock механизмы
+Все джобы используют Cache::lock() на основе image_id:
+php'metadata-processing:{image_id}'
+'geolocation-processing:{image_id}'
+'thumbnail-processing:{image_id}'
+'face-processing:{image_id}'
+```
+
+### 7.3 Дедупликация
+
+Через таблицу `queues` с уникальным `queue_key` (MD5 хеш).
+
+### 7.4 Цепочки джобов
+```
+MetadataProcessJob
+    → (если есть GPS) → GeolocationProcessJob (через Bus::chain)
+Атомарность: если MetadataProcessJob падает, GeolocationProcessJob не запускается.
+7.5 Логи
+Все в /var/www/photo/storage/logs/:
+
+laravel.log
+supervisor-photo-*.log
+face-api-access.log
+face-api-error.log
+
+
+8. УСТАНОВКА И ЗАПУСК
+8.1 Face API
+bash# 1. Создать файлы в etc/face-api/
+cd /var/www/photo
+mkdir -p etc/face-api etc/systemd
+
+# 2. Создать server.py, requirements.txt, install.sh, face-api.service
+
+# 3. Запустить установку
+sudo ./etc/face-api/install.sh
+
+# 4. Проверить
+systemctl status face-api
+curl http://127.0.0.1:5000/health
+8.2 Supervisor workers
+bash# 1. Копировать конфиги
+sudo cp etc/supervisor/*.conf /etc/supervisor/conf.d/
+
+# 2. Применить
+sudo supervisorctl reread
+sudo supervisorctl update
+
+# 3. Запустить
+sudo supervisorctl start photo-workers:*
+
+# 4. Проверить
+sudo supervisorctl status
+
+9. ТЕСТИРОВАНИЕ
+9.1 Face API
+bash# Health check
+curl http://127.0.0.1:5000/health
+
+# Test encoding
+curl -X POST http://127.0.0.1:5000/encode \
+  -F "image=@/path/to/test.jpg" \
+  -F "original_path=/var/www/photo/storage/app/private/images/test.jpg" \
+  -F "original_disk=/var/www/photo/storage/app/private" \
+  -F "image_debug_subdir=debug"
+9.2 Laravel Jobs
+bashphp artisan tinker
+
+# Test MetadataProcessJob
+\App\Jobs\MetadataProcessJob::dispatch([
+    'image_id' => 1,
+    'source_disk' => 'private',
+    'source_path' => 'images',
+    'source_filename' => 'test.jpg'
+])->onQueue('metadata');
+
+# Test FaceProcessJob
+\App\Jobs\FaceProcessJob::dispatch([
+    'image_id' => 1
+])->onQueue('faces');
+
+10. TROUBLESHOOTING
+10.1 Face API не запускается
+bash# Проверка логов
+sudo journalctl -u face-api -n 50
+tail -f /var/www/photo/storage/logs/face-api-error.log
+
+# Проверка прав
+ls -la /var/www/photo/storage/logs/
+sudo chown -R www-data:web /var/www/photo/storage/logs
+
+# Ручной запуск для отладки
+source /var/www/photo/face-api-venv/bin/activate
+cd /var/www/photo/etc/face-api
+python server.py
+10.2 Медленная обработка
+bash# Увеличить workers в systemd
+sudo nano /etc/systemd/system/face-api.service
+# --workers 24
+
+sudo systemctl daemon-reload
+sudo systemctl restart face-api
+
+# Увеличить numprocs в supervisor
+sudo nano /etc/supervisor/conf.d/photo-face-worker.conf
+# numprocs=12
+
+sudo supervisorctl reread
+sudo supervisorctl update
+10.3 Проблемы с памятью
+bash# Уменьшить workers
+# В systemd: --workers 8
+# В supervisor: numprocs=4
+
+# Добавить swap
+sudo fallocate -l 16G /swapfile
+sudo chmod 600 /swapfile
+sudo mkswap /swapfile
+sudo swapon /swapfile
+
+11. КОНФИГУРАЦИЯ LARAVEL
+.env
+bashFACE_API_URL=http://127.0.0.1:5000
+config/app.php
+php'face_api_url' => env('FACE_API_URL', 'http://127.0.0.1:5000'),
+```
+
+---
+
+## 12. ВЕРСИИ ПО
+
+- **OS**: Ubuntu 22.04 (предположительно)
+- **Python**: 3.12
+- **PHP**: 8.x
+- **Laravel**: 10/11
+- **dlib**: 19.24+ (CPU-only, с AVX)
+- **face_recognition**: latest
+- **FastAPI**: latest
+- **Gunicorn**: 21.2.0
+- **numpy**: ≥1.26.0 (для Python 3.12)
+
+---
+
+## 13. КЛЮЧЕВЫЕ ФАЙЛЫ
+
+### PHP
+- `app/Jobs/MetadataProcessJob.php`
+- `app/Jobs/GeolocationProcessJob.php`
+- `app/Jobs/ThumbnailProcessJob.php`
+- `app/Jobs/FaceProcessJob.php`
+- `app/Jobs/BaseProcessJob.php` (с QueueAbleTrait)
+- `app/Models/Face.php`
+- `app/Models/Image.php`
+
+### Python
+- `etc/face-api/server.py`
+- `etc/face-api/requirements.txt`
+- `etc/face-api/install.sh`
+
+### Конфигурация
+- `etc/systemd/face-api.service`
+- `etc/supervisor/photo-*-worker.conf`
+
+### Логи
+- `storage/logs/laravel.log`
+- `storage/logs/supervisor-photo-*.log`
+- `storage/logs/face-api-*.log`
+
+---
+
+## ИТОГОВАЯ СХЕМА ОБРАБОТКИ
+```
+1. Загрузка изображения
+   ↓
+2. newUpload() контроллер
+   ├─→ pushToQueue(ThumbnailProcessJob) → thumbnails queue
+   └─→ pushToQueue(MetadataProcessJob) → metadata queue
+       ↓
+3. MetadataProcessJob (извлекает EXIF)
+   ├─→ Если есть GPS → queueGeolocationJob() (Bus::chain)
+   │   ↓
+   │   GeolocationProcessJob (Nominatim API, rate limit 1/sec)
+   │
+   └─→ [Потенциально] → FaceProcessJob (обсудить позже)
+       ↓
+4. FaceProcessJob
+   ├─→ POST /encode к Face API
+   │   ↓
+   │   Face API (HOG model, CPU-only)
+   │   - Детекция лиц
+   │   - Создание encodings (128 floats)
+   │   - Debug изображение
+   │   ↓
+   ├─→ Сохранение Face записей (status='process')
+   │
+   └─→ POST /compare для каждого лица
+       - Сравнение с существующими faces (parent_id IS NULL, status='ok')
+       - Если distance < 0.6 → устанавливаем parent_id
+
+Конец документа
+</artifact>

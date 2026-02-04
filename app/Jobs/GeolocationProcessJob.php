@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Models\Geolocation;
 use App\Models\Image;
 use App\Models\ImageGeolocationAddress;
 use App\Models\ImageGeolocationPoint;
@@ -19,14 +20,13 @@ class GeolocationProcessJob extends BaseProcessJob
      */
     private const NOMINATIM_RATE_LIMIT_SECONDS = 2;
 
-    protected const FIELDS_NEEDED = [
-        'image_id',
-        'latitude', 'longitude' // From metadata field, acquire from MetadataProcessJob
-    ];
-
-    public function handle()
+    /**
+     * Execute the job.
+     */
+    public function handle(): void
     {
-        $lockKey = 'geolocation-processing:' . $this->taskData['image_id'];
+        $imageId = $this->taskData['image_id'];
+        $lockKey = 'geolocation-processing:' . $imageId;
         $lock = Cache::lock($lockKey, 10);
 
         try {
@@ -35,12 +35,13 @@ class GeolocationProcessJob extends BaseProcessJob
             });
         } catch (\Illuminate\Contracts\Cache\LockTimeoutException $e) {
             Log::warning('Could not acquire lock for geolocation processing', [
-                'image_id' => $this->taskData['image_id']
+                'image_id' => $imageId
             ]);
             $this->release(30);
+            return;
         } catch (\Exception $e) {
             Log::error('Geolocation processing failed', [
-                'image_id' => $this->taskData['image_id'],
+                'image_id' => $imageId,
                 'error' => $e->getMessage()
             ]);
             throw $e;
@@ -49,10 +50,33 @@ class GeolocationProcessJob extends BaseProcessJob
         }
     }
 
-    private function processGeolocation()
+    private function processGeolocation(): void
     {
-        $latitude = $this->taskData['latitude'];
-        $longitude = $this->taskData['longitude'];
+        $image = Image::findOrFail($this->taskData['image_id']);
+
+        // Проверяем наличие метаданных
+        if (!$image->metadata) {
+            Log::warning('No metadata found for image', ['image_id' => $image->id]);
+            return;
+        }
+
+        // Проверяем наличие GPS данных
+        if (!Geolocation::hasGeodata($image->metadata)) {
+            Log::info('No GPS data in metadata', ['image_id' => $image->id]);
+            return;
+        }
+
+        // Извлекаем координаты
+        [$latitude, $longitude] = Geolocation::extractCoordinates($image->metadata);
+
+        if (!$latitude || !$longitude || !is_float($latitude) || !is_float($longitude)) {
+            Log::warning('Invalid coordinates extracted', [
+                'image_id' => $image->id,
+                'latitude' => $latitude,
+                'longitude' => $longitude,
+            ]);
+            return;
+        }
 
         $pointLatLon = new Point($latitude, $longitude);
 
@@ -62,7 +86,6 @@ class GeolocationProcessJob extends BaseProcessJob
             $addressId = ImageGeolocationAddress::whereContains('osm_area', $pointLatLon)->value('id');
 
             if (!$addressId) {
-                // Соблюдаем rate limit перед вызовом API
                 $this->waitForRateLimit();
 
                 $addressId = $this->getAddressId($latitude, $longitude);
@@ -82,10 +105,9 @@ class GeolocationProcessJob extends BaseProcessJob
             ]);
         }
 
-        Image::where('id', $this->taskData['image_id'])
-            ->update(['image_geolocation_point_id' => $point->id]);
+        $image->update(['image_geolocation_point_id' => $point->id]);
 
-        Log::info('Geolocation processed successfully for image ' . $this->taskData['image_id']);
+        Log::info('Geolocation processed successfully', ['image_id' => $image->id]);
     }
 
     /**
@@ -109,8 +131,7 @@ class GeolocationProcessJob extends BaseProcessJob
             }
         }
 
-        // Сохраняем время последнего вызова
-        Cache::put($lockKey, microtime(true), 5); // TTL 5 секунд
+        Cache::put($lockKey, microtime(true), 5);
     }
 
     private function getAddressId(float $latitude, float $longitude): false|int
@@ -122,7 +143,7 @@ class GeolocationProcessJob extends BaseProcessJob
 
         try {
             $response = Http::timeout(10)
-                ->retry(3, 2000) // 3 попытки с задержкой 2 секунды между ними
+                ->retry(3, 2000)
                 ->withHeaders(['User-Agent' => 'MyGeocodingApp/1.0'])
                 ->get($locUrl);
 
@@ -144,7 +165,6 @@ class GeolocationProcessJob extends BaseProcessJob
                 return false;
             }
 
-            // Проверяем существующий адрес по osm_id
             $existingAddress = ImageGeolocationAddress::where('osm_id', $addressAr['osm_id'])->first();
             if ($existingAddress) {
                 Log::info('Using existing address', ['address_id' => $existingAddress->id]);

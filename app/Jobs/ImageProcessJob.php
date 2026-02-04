@@ -2,9 +2,9 @@
 
 namespace App\Jobs;
 
-use App\Console\Commands\ImagesPhashes;
+use App\Contracts\ImagePathServiceInterface;
+use App\Contracts\ImageRepositoryInterface;
 use App\Models\Image;
-use App\Services\ImagePathService;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Jenssegers\ImageHash\ImageHash;
@@ -12,35 +12,30 @@ use Jenssegers\ImageHash\Implementations\PerceptualHash;
 
 class ImageProcessJob extends BaseProcessJob
 {
-
-    const FIELDS_NEEDED = [
-        'image_id',
-        // 'source_disk', 'source_path', 'source_filename',
-    ];
     /**
      * Execute the job.
-     *
-     * @return void
      */
-    public function handle()
-    {
-        // Lock на основе image_id для предотвращения параллельной обработки
-        $lockKey = 'image-processing:' . $this->taskData['image_id'];
-        $lock = Cache::lock($lockKey, 10); // 10 секунд достаточно для изображения
+    public function handle(
+        ImageRepositoryInterface $imageRepository,
+        ImagePathServiceInterface $pathService
+    ): void {
+        $imageId = $this->taskData['image_id'];
+        $lockKey = 'image-processing:' . $imageId;
+        $lock = Cache::lock($lockKey, 10);
 
         try {
-            $lock->block(10, function () {
-                $this->processImage();
+            $lock->block(10, function () use ($imageRepository, $pathService) {
+                $this->processImage($imageRepository, $pathService);
             });
         } catch (\Illuminate\Contracts\Cache\LockTimeoutException $e) {
             Log::warning('Could not acquire lock for image processing', [
-                'image_id' => $this->taskData['image_id']
+                'image_id' => $imageId
             ]);
-            // Повторить через 10 секунд
             $this->release(10);
+            return;
         } catch (\Exception $e) {
             Log::error('Image processing failed', [
-                'image_id' => $this->taskData['image_id'],
+                'image_id' => $imageId,
                 'error' => $e->getMessage()
             ]);
             throw $e;
@@ -49,26 +44,32 @@ class ImageProcessJob extends BaseProcessJob
         }
     }
 
-    protected function processImage() {
+    protected function processImage(
+        ImageRepositoryInterface $imageRepository,
+        ImagePathServiceInterface $pathService
+    ): void {
         $image = Image::findOrFail($this->taskData['image_id']);
-        $filePath = ImagePathService::getImagePathByObj($image);
+        $filePath = $pathService->getImagePathByObj($image);
+        $threshold = config('image.processing.phash_distance_threshold', 5);
 
         try {
+            // MD5 hash для быстрой проверки дубликатов
             $md5 = md5_file($filePath);
 
             // Сначала быстрая проверка по MD5
-            $duplicateId = Image::where('hash', $md5)->value('id');
+            $duplicateId = Image::where('hash', hex2bin($md5))->value('id');
 
-            // Perceptual hash нужен в любом случае для сохранения в БД
+            // Perceptual hash
             $hasher = new ImageHash(new PerceptualHash());
-            $phashCurrent = $hasher->hash($filePath);
+            $phashObject = $hasher->hash($filePath);
+            $phashHex = $phashObject->toHex();
 
-            // Только если не нашли по MD5, ищем по perceptual hash
+            // Если не нашли по MD5, ищем по perceptual hash
             if (!$duplicateId) {
-                $phashCurrentHex = $phashCurrent->toHex();
-                $duplicateId = Image::findSimilarImageId($phashCurrentHex, ImagesPhashes::PHASH_DISTANCE_THRESHOLD);
+                $duplicateId = $imageRepository->findSimilarByPhash($phashHex, $threshold);
             }
 
+            // Получаем размеры изображения
             $imageData = getimagesize($filePath);
 
             $image->update([
@@ -76,12 +77,24 @@ class ImageProcessJob extends BaseProcessJob
                 'width' => $imageData[0],
                 'height' => $imageData[1],
                 'hash' => $md5,
-                'phash' => $phashCurrent,
+                'phash' => $phashHex,
             ]);
+
+            Log::info('Image processed successfully', [
+                'image_id' => $image->id,
+                'has_duplicate' => $duplicateId !== null,
+            ]);
+
         } catch (\Exception $e) {
-            Log::error('ImageProcessJob failed (' . 'image_id = ' . $this->taskData['image_id'] . '): ' . $e->getMessage());
-        } finally {
-            $this->complete();
+            Log::error('ImageProcessJob failed', [
+                'image_id' => $this->taskData['image_id'],
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+
+            $image->update(['last_error' => $e->getMessage()]);
+
+            throw $e;
         }
     }
 }

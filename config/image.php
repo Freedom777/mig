@@ -45,18 +45,64 @@ return [
         'blendingColor' => 'ffffff',
         'strip' => false,
     ],
+    /*
+    |--------------------------------------------------------------------------
+    | Thumbnails Configuration
+    |--------------------------------------------------------------------------
+    */
     'thumbnails' => [
-        'postfix' => env('THUMBNAIL_POSTFIX', '_thumb_{method}_{width}x{height}'), // Можно изменить на '_thumb' если нужно
-        'width' => env('THUMBNAIL_WIDTH', 200),
+        'width' => env('THUMBNAIL_WIDTH', 300),
         'height' => env('THUMBNAIL_HEIGHT', 200),
+        'method' => env('THUMBNAIL_METHOD', 'cover'), // cover, scale, resize, contain
         'dir_format' => '{width}x{height}',
-        'method' => env('THUMBNAIL_METHOD', 'cover'),
+        'postfix' => env('THUMBNAIL_POSTFIX', '_thumb_{method}_{width}x{height}'),
     ],
+    /*
+    |--------------------------------------------------------------------------
+    | Paths Configuration
+    |--------------------------------------------------------------------------
+    */
     'paths' => [
-        'disk' => env('IMAGE_STORAGE_DISK', 'local'),
+        'disk' => env('IMAGE_DISK', 'private'),
+        'images' => env('IMAGE_PATH', 'images'),
         'root' => $storagePath,
-        'images' => env('IMAGE_STORAGE_PATH', 'images'),
         'thumbnails' => env('THUMBNAIL_STORAGE_PATH', 'thumbnails'),
         'debug_subdir' => env('IMAGE_DEBUG_SUBDIR', 'debug'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Processing Configuration
+    |--------------------------------------------------------------------------
+    |
+    | mode:
+    |   - 'queue'    : Jobs dispatched to queue (default, production)
+    |   - 'sync'     : Jobs executed immediately
+    |   - 'disabled' : Skip all processing (maintenance)
+    |
+    | dry_run:
+    |   - true  : Only log what would be done, don't actually execute
+    |   - false : Normal execution
+    |
+    | debug:
+    |   - true  : Verbose logging (job params, timing, etc.)
+    |   - false : Standard logging
+    |
+    */
+    'processing' => [
+        'mode' => env('IMAGE_PROCESSING_MODE', 'queue'),
+        'dry_run' => env('IMAGE_PROCESSING_DRY_RUN', false),
+        'debug' => env('IMAGE_PROCESSING_DEBUG', false),
+        'phash_distance_threshold' => env('PHASH_DISTANCE_THRESHOLD', 5),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Face Recognition
+    |--------------------------------------------------------------------------
+    */
+    'face_api' => [
+        'url' => env('FACE_API_URL', 'http://127.0.0.1:5000'),
+        'threshold' => env('FACE_RECOGNITION_THRESHOLD', 0.6),
     ],
 ];

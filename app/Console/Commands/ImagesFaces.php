@@ -2,45 +2,58 @@
 
 namespace App\Console\Commands;
 
-use App\Jobs\FaceProcessJob;
+use App\Contracts\ImageQueueDispatcherInterface;
 use App\Models\Image;
-use App\Traits\QueueAbleTrait;
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\Log;
 
 class ImagesFaces extends Command
 {
-    use QueueAbleTrait;
-
     protected $signature = 'images:faces';
 
-    protected $description = 'Put all faces, which are not processed to queue.';
+    protected $description = 'Queue face detection for images not yet processed';
 
-    public function handle() {
-        try {
-            Image::query()
-                ->select('id')
-                ->where('faces_checked', 0)
-                ->chunkById(1000, function ($images) {
-                    foreach ($images as $image) {
-                        $response = self::pushToQueue(FaceProcessJob::class, config('queue.name.faces'), [
-                            'image_id' => $image->id,
-                        ]);
+    public function __construct(
+        protected ImageQueueDispatcherInterface $dispatcher
+    ) {
+        parent::__construct();
+    }
 
-                        $responseData = $response->getData();
+    public function handle(): int
+    {
+        $query = Image::where('faces_checked', 0);
+        $total = $query->count();
 
-                        if ($responseData->status === 'success') {
-                            Log::info('Face job queued', ['image_id' => $image->id]);
-                        } elseif ($responseData->status === 'exists') {
-                            Log::info('Face job already in queue', ['image_id' => $image->id]);
-                        }
-                        /*dispatch(new FaceProcessJob([
-                            'image_id' => $image->id,
-                        ]))->onQueue(config('queue.name.faces'));*/
-                    }
-                });
-        } catch (\Exception $e) {
-            $this->error('Failed to send to API object Faces: ' . $e->getMessage());
+        if ($total === 0) {
+            $this->info('No images awaiting face detection.');
+            return Command::SUCCESS;
         }
+
+        $this->info("Found {$total} images for face detection.");
+
+        $queued = 0;
+        $skipped = 0;
+        $errors = 0;
+
+        $query->chunkById(1000, function ($images) use (&$queued, &$skipped, &$errors) {
+            foreach ($images as $image) {
+                try {
+                    $status = $this->dispatcher->dispatchFace($image);
+
+                    match ($status) {
+                        'success', 'completed' => $queued++,
+                        'exists', 'skipped', 'dry-run' => $skipped++,
+                        default => $errors++,
+                    };
+
+                } catch (\Exception $e) {
+                    $this->error("Failed for image {$image->id}: {$e->getMessage()}");
+                    $errors++;
+                }
+            }
+        });
+
+        $this->info("Completed: {$queued} queued, {$skipped} skipped, {$errors} errors.");
+
+        return $errors > 0 ? Command::FAILURE : Command::SUCCESS;
     }
 }

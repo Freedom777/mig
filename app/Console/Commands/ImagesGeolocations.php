@@ -2,49 +2,67 @@
 
 namespace App\Console\Commands;
 
-use App\Jobs\GeolocationProcessJob;
+use App\Contracts\ImageQueueDispatcherInterface;
 use App\Models\Image;
-use App\Traits\QueueAbleTrait;
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\Log;
 
 class ImagesGeolocations extends Command
 {
-    use QueueAbleTrait;
-
     protected $signature = 'images:geolocations';
 
-    protected $description = 'Put all geolocations, which are not processed and have geodata in the metadata to queue.';
+    protected $description = 'Queue geolocation processing for images with GPS data but without geolocation point';
 
-    public function handle()
+    public function __construct(
+        protected ImageQueueDispatcherInterface $dispatcher
+    ) {
+        parent::__construct();
+    }
+
+    public function handle(): int
     {
-        Image::query()
-            ->select('id')
+        $query = Image::query()
             ->whereNotNull('metadata')
             ->where(function ($query) {
                 $query->where(function ($q) {
                     $q->whereNotNull('metadata->GPSLatitude')
                         ->whereNotNull('metadata->GPSLongitude');
-                })
-                    ->orWhereNotNull('metadata->GPSPosition');
+                })->orWhereNotNull('metadata->GPSPosition');
             })
-            ->whereNull('image_geolocation_point_id')
-            ->chunkById(1000, function ($images) {
-                foreach ($images as $image) {
-                    $response = self::pushToQueue(GeolocationProcessJob::class, config('queue.name.geolocations'), [
-                        'image_id' => $image->id,
-                    ]);
+            ->whereNull('image_geolocation_point_id');
 
-                    $responseData = $response->getData();
+        $total = $query->count();
 
-                    if ($responseData->status === 'success') {
-                        Log::info('Geolocation job queued', ['image_id' => $image->id]);
-                    } elseif ($responseData->status === 'exists') {
-                        Log::info('Geolocation job already in queue', ['image_id' => $image->id]);
-                    }
+        if ($total === 0) {
+            $this->info('No images with GPS data awaiting geolocation processing.');
+            return Command::SUCCESS;
+        }
 
+        $this->info("Found {$total} images with GPS data.");
+
+        $queued = 0;
+        $skipped = 0;
+        $errors = 0;
+
+        $query->chunkById(1000, function ($images) use (&$queued, &$skipped, &$errors) {
+            foreach ($images as $image) {
+                try {
+                    $status = $this->dispatcher->dispatchGeolocation($image);
+
+                    match ($status) {
+                        'success', 'completed' => $queued++,
+                        'exists', 'skipped', 'dry-run' => $skipped++,
+                        default => $errors++,
+                    };
+
+                } catch (\Exception $e) {
+                    $this->error("Failed for image {$image->id}: {$e->getMessage()}");
+                    $errors++;
                 }
-            });
+            }
+        });
 
+        $this->info("Completed: {$queued} queued, {$skipped} skipped, {$errors} errors.");
+
+        return $errors > 0 ? Command::FAILURE : Command::SUCCESS;
     }
 }

@@ -1,0 +1,198 @@
+# Рефакторинг Image Processing
+
+## Структура файлов
+
+```
+app/
+├── Contracts/
+│   ├── ImageRepositoryInterface.php      # Интерфейс репозитория
+│   ├── ImageQueueDispatcherInterface.php # Интерфейс диспетчера очередей
+│   ├── ImageServiceInterface.php         # Интерфейс главного сервиса
+│   └── ImagePathServiceInterface.php     # Интерфейс сервиса путей
+├── Repositories/
+│   └── ImageRepository.php               # Реализация репозитория
+├── Services/
+│   ├── ImageService.php                  # Главный сервис (точка входа)
+│   ├── ImageQueueDispatcher.php          # Диспетчер очередей
+│   └── ImagePathService.php              # Сервис работы с путями
+├── Providers/
+│   └── ImageServiceProvider.php          # Регистрация DI
+├── Http/Controllers/Api/
+│   └── ApiImageActionController.php      # Рефакторенный контроллер
+├── Console/Commands/
+│   └── ImagesProcess.php                 # Рефакторенная команда
+├── Jobs/
+│   └── ImageProcessJob.php               # Исправленная джоба
+└── Models/
+    └── Image.php                         # Очищенная модель
+
+config/
+└── image.php                             # Унифицированный конфиг
+```
+
+## Диаграмма зависимостей
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                       Entry Points                              │
+│  ┌──────────────────────┐    ┌───────────────────────────────┐ │
+│  │ ApiImageController   │    │ ImagesProcess (Command)       │ │
+│  └──────────┬───────────┘    └───────────────┬───────────────┘ │
+│             │                                │                  │
+│             └────────────┬───────────────────┘                  │
+│                          ▼                                      │
+│              ┌───────────────────────┐                          │
+│              │    ImageService       │                          │
+│              └───────────┬───────────┘                          │
+│                          │                                      │
+│         ┌────────────────┼────────────────┐                     │
+│         ▼                ▼                ▼                     │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────┐         │
+│  │ ImageRepo   │  │ QueueDisp   │  │ ImagePathService│         │
+│  └─────────────┘  └──────┬──────┘  └─────────────────┘         │
+│                          │                                      │
+│         ┌────────────────┼────────────────┐                     │
+│         ▼                ▼                ▼                     │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐             │
+│  │ ImageJob    │  │ ThumbJob    │  │ MetadataJob │  ...        │
+│  └─────────────┘  └─────────────┘  └─────────────┘             │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+## Исправленные баги
+
+### 1. ❌ Двойной вызов `complete()` в ImageProcessJob
+**Было:** `complete()` вызывался и в `handle()`, и в `processImage()`
+**Стало:** Только один вызов в `handle()` finally блоке
+
+### 2. ❌ phash сохранялся как объект
+**Было:**
+```php
+$phashCurrent = $hasher->hash($filePath);
+$image->update(['phash' => $phashCurrent]); // объект Hash
+```
+**Стало:**
+```php
+$phashObject = $hasher->hash($filePath);
+$phashHex = $phashObject->toHex();
+$image->update(['phash' => $phashHex]); // hex string
+```
+
+### 3. ❌ Инвертированный параметр `$updateIfExists`
+**Было:** Параметр назывался `$updateIfExists`, но логика была "skip if exists"
+**Стало:** Параметр переименован в `$skipIfExists` в ImageService
+
+### 4. ❌ Разные имена конфигов
+**Было:** `config('image.paths.disk')` vs `config('images.thumbnails.width')`
+**Стало:** Единый `config/image.php` с namespace `image.*`
+
+### 5. ❌ Null не обрабатывался после prepareData()
+**Было:** `prepareData()` мог вернуть null, но проверка была закомментирована
+**Стало:** Проверка `exists()` вынесена в `ImageService`, `prepareData()` всегда возвращает array
+
+### 6. ⚠️ Image::previous() сортировка
+**Было:** `orderBy('id', 'asc')` — возвращало первый ID, а не предыдущий
+**Стало:** `orderBy('id', 'desc')` — корректно возвращает предыдущий
+
+## Что изменилось архитектурно
+
+### До рефакторинга
+```
+Controller/Command
+    ↓
+Image::prepareData() (static)
+    ↓
+Image::updateInsert() (static)
+    ↓
+BaseProcessJob::pushToQueue() (дублирование логики)
+```
+
+### После рефакторинга
+```
+Controller/Command
+    ↓
+ImageService (DI)
+    ├── ImageRepository (работа с БД)
+    └── ImageQueueDispatcher (постановка в очередь)
+```
+
+## Установка
+
+### 1. Скопировать файлы в проект
+
+### 2. Зарегистрировать провайдер в `bootstrap/providers.php` (Laravel 11+):
+```php
+return [
+    // ...
+    App\Providers\ImageServiceProvider::class,
+];
+```
+
+### 3. Проверить биндинги (опционально):
+```bash
+php artisan tinker
+```
+```php
+app(App\Contracts\ImagePathServiceInterface::class);
+app(App\Contracts\ImageRepositoryInterface::class);
+app(App\Contracts\ImageQueueDispatcherInterface::class);
+app(App\Contracts\ImageServiceInterface::class);
+```
+
+### 4. Обновить config/image.php (заменить старые конфиги)
+
+### 4. Проверить что старые вызовы заменены:
+- `Image::prepareData()` → `$imageRepository->prepareImageData()`
+- `Image::updateInsert()` → `$imageRepository->updateOrCreate()`
+- `config('images.thumbnails.*')` → `config('image.thumbnails.*')`
+
+## Тестирование
+
+Теперь можно легко мокать зависимости:
+
+```php
+public function test_new_upload_creates_image()
+{
+    $mockRepository = Mockery::mock(ImageRepositoryInterface::class);
+    $mockRepository->shouldReceive('exists')->andReturn(false);
+    $mockRepository->shouldReceive('prepareImageData')->andReturn([
+        'source_disk' => 'private',
+        'source_path' => 'images',
+        'source_filename' => 'test.jpg',
+        'size' => 1024,
+        'created_at_file' => now(),
+        'updated_at_file' => now(),
+    ]);
+    $mockRepository->shouldReceive('updateOrCreate')->andReturn(new Image(['id' => 1]));
+
+    $mockDispatcher = Mockery::mock(ImageQueueDispatcherInterface::class);
+    $mockDispatcher->shouldReceive('dispatchAll')->andReturn([
+        'image' => 'success',
+        'thumbnail' => 'success',
+        'metadata' => 'success',
+        'face' => 'success',
+    ]);
+
+    $service = new ImageService($mockRepository, $mockDispatcher);
+
+    $result = $service->processNewUpload('private', 'images', 'test.jpg');
+
+    $this->assertTrue($result['success']);
+}
+```
+
+## Миграция существующего кода
+
+Если где-то ещё используются старые статические методы, можно временно оставить их в модели как deprecated:
+
+```php
+// В Image.php (временно, для обратной совместимости)
+
+/**
+ * @deprecated Use ImageRepository::prepareImageData() instead
+ */
+public static function prepareData(...$args): ?array
+{
+    return app(ImageRepositoryInterface::class)->prepareImageData(...$args);
+}
+```

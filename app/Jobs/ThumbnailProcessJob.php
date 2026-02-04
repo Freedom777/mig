@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Contracts\ImagePathServiceInterface;
 use App\Models\Image;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Storage;
@@ -11,37 +12,28 @@ use Illuminate\Support\Facades\Log;
 
 class ThumbnailProcessJob extends BaseProcessJob
 {
-
-    const FIELDS_NEEDED = [
-        'source_disk', 'source_path', 'source_filename',
-        'thumbnail_path', 'thumbnail_filename',
-        'thumbnail_method', 'thumbnail_width', 'thumbnail_height',
-    ];
-
     /**
      * Execute the job.
-     *
-     * @return void
      */
-    public function handle()
+    public function handle(ImagePathServiceInterface $pathService): void
     {
-        // Lock на основе image_id для единообразия с другими джобами
-        $lockKey = 'thumbnail-processing:' . $this->taskData['image_id'];
-        $lock = Cache::lock($lockKey, 60); // 60 секунд для обработки изображения
+        $imageId = $this->taskData['image_id'];
+        $lockKey = 'thumbnail-processing:' . $imageId;
+        $lock = Cache::lock($lockKey, 60);
 
         try {
-            $lock->block(60, function () {
-                $this->processThumbnail();
+            $lock->block(60, function () use ($pathService) {
+                $this->processThumbnail($pathService);
             });
         } catch (\Illuminate\Contracts\Cache\LockTimeoutException $e) {
             Log::warning('Could not acquire lock for thumbnail processing', [
-                'image_id' => $this->taskData['image_id']
+                'image_id' => $imageId
             ]);
-            // Повторить через 30 секунд
             $this->release(30);
+            return;
         } catch (\Exception $e) {
             Log::error('Thumbnail processing failed', [
-                'image_id' => $this->taskData['image_id'],
+                'image_id' => $imageId,
                 'error' => $e->getMessage()
             ]);
             throw $e;
@@ -53,10 +45,26 @@ class ThumbnailProcessJob extends BaseProcessJob
     /**
      * Обрабатывает создание thumbnail
      */
-    private function processThumbnail(): void
+    private function processThumbnail(ImagePathServiceInterface $pathService): void
     {
-        $disk = Storage::disk($this->taskData['disk']);
-        $shortPath = $this->taskData['source_path'] . '/' . $this->taskData['source_filename'];
+        $image = Image::findOrFail($this->taskData['image_id']);
+
+        // Получаем конфигурацию thumbnail
+        $thumbWidth = config('image.thumbnails.width', 300);
+        $thumbHeight = config('image.thumbnails.height', 200);
+        $thumbMethod = config('image.thumbnails.method', 'cover');
+
+        // Генерируем пути через PathService
+        $thumbPath = $pathService->getThumbnailSubdir($thumbWidth, $thumbHeight);
+        $thumbFilename = $pathService->getThumbnailFilename(
+            $image->filename,
+            $thumbMethod,
+            $thumbWidth,
+            $thumbHeight
+        );
+
+        $disk = Storage::disk($image->disk);
+        $shortPath = $image->path . '/' . $image->filename;
 
         // Проверяем существование исходного файла
         if (!$disk->exists($shortPath)) {
@@ -64,72 +72,54 @@ class ThumbnailProcessJob extends BaseProcessJob
         }
 
         $sourcePath = $disk->path($shortPath);
-        $targetDir = $this->taskData['source_path'] . '/' . $this->taskData['thumbnail_path'];
+        $targetDir = $image->path . '/' . $thumbPath;
 
         // Создаем директорию для thumbnails если её нет
         if (!$disk->exists($targetDir)) {
             $disk->makeDirectory($targetDir);
+            chmod($disk->path($targetDir), 0755);
 
-            // Устанавливаем права 755 (rwxr-xr-x)
-            $fullTargetDirPath = $disk->path($targetDir);
-            chmod($fullTargetDirPath, 0755);
-
-            Log::info('Created thumbnail directory with proper permissions', [
+            Log::info('Created thumbnail directory', [
                 'path' => $targetDir,
-                'full_path' => $fullTargetDirPath
             ]);
         }
 
-        $targetPath = $disk->path(
-            $targetDir . '/' . $this->taskData['thumbnail_filename']
-        );
+        $targetPath = $disk->path($targetDir . '/' . $thumbFilename);
 
         // Проверяем, не существует ли уже thumbnail
         if (file_exists($targetPath)) {
             Log::info('Thumbnail already exists, skipping', [
-                'image_id' => $this->taskData['image_id'],
+                'image_id' => $image->id,
                 'target_path' => $targetPath
             ]);
             return;
         }
 
         try {
-            // Создаем thumbnail
             $manager = new ImageManager(new Driver());
-            $image = $manager->read($sourcePath);
+            $img = $manager->read($sourcePath);
 
-            $method = $this->taskData['thumbnail_method'];
-
-            // Валидация метода
-            if (!in_array($method, ['cover', 'scale', 'resize', 'contain'])) {
-                throw new \InvalidArgumentException('Invalid thumbnail method: ' . $method);
+            if (!in_array($thumbMethod, ['cover', 'scale', 'resize', 'contain'])) {
+                throw new \InvalidArgumentException('Invalid thumbnail method: ' . $thumbMethod);
             }
 
-            $image->{$method}(
-                $this->taskData['thumbnail_width'],
-                $this->taskData['thumbnail_height']
-            );
+            $img->{$thumbMethod}($thumbWidth, $thumbHeight);
+            $img->save($targetPath);
 
-            $image->save($targetPath);
-
-            // Проверяем, что файл действительно создан
             if (!file_exists($targetPath)) {
                 throw new \RuntimeException('Thumbnail file was not created: ' . $targetPath);
             }
 
-            // Устанавливаем права на файл
             chmod($targetPath, 0644);
 
             Log::info('Thumbnail created successfully', [
-                'image_id' => $this->taskData['image_id'],
-                'source' => $shortPath,
+                'image_id' => $image->id,
                 'target' => $targetPath,
-                'method' => $method,
-                'dimensions' => $this->taskData['thumbnail_width'] . 'x' . $this->taskData['thumbnail_height']
+                'dimensions' => "{$thumbWidth}x{$thumbHeight}",
+                'method' => $thumbMethod,
             ]);
 
         } catch (\Exception $e) {
-            // Удаляем частично созданный файл если что-то пошло не так
             if (file_exists($targetPath)) {
                 @unlink($targetPath);
             }
@@ -137,28 +127,13 @@ class ThumbnailProcessJob extends BaseProcessJob
         }
 
         // Обновляем запись в БД
-        $this->updateImageRecord();
-    }
-
-    /**
-     * Обновляет запись изображения в БД
-     */
-    private function updateImageRecord(): void
-    {
-        $updated = Image::where('id', $this->taskData['image_id'])
-            ->update([
-                'thumbnail_path' => $this->taskData['thumbnail_path'],
-                'thumbnail_filename' => $this->taskData['thumbnail_filename'],
-                'thumbnail_method' => $this->taskData['thumbnail_method'],
-                'thumbnail_width' => $this->taskData['thumbnail_width'],
-                'thumbnail_height' => $this->taskData['thumbnail_height'],
-            ]);
-
-        if (!$updated) {
-            Log::warning('Failed to update image record', [
-                'image_id' => $this->taskData['image_id']
-            ]);
-        }
+        $image->update([
+            'thumbnail_path' => $thumbPath,
+            'thumbnail_filename' => $thumbFilename,
+            'thumbnail_method' => $thumbMethod,
+            'thumbnail_width' => $thumbWidth,
+            'thumbnail_height' => $thumbHeight,
+        ]);
     }
 
     /**
@@ -170,15 +145,11 @@ class ThumbnailProcessJob extends BaseProcessJob
             'image_id' => $this->taskData['image_id'] ?? null,
             'error' => $e->getMessage(),
             'trace' => $e->getTraceAsString(),
-            'data' => $this->taskData,
         ]);
 
-        // Опционально: можно отметить в БД что thumbnail не удалось создать
         if (isset($this->taskData['image_id'])) {
             Image::where('id', $this->taskData['image_id'])
-                ->update([
-                    'last_error' => $e->getMessage(),
-                ]);
+                ->update(['last_error' => $e->getMessage()]);
         }
     }
 }

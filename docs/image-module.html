@@ -1,0 +1,1550 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Image Module Documentation</title>
+    
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Source+Sans+3:wght@400;600;700&family=Source+Serif+4:opsz,wght@8..60,600&display=swap" rel="stylesheet">
+    
+    <!-- Prism.js for syntax highlighting -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" rel="stylesheet">
+    
+    <!-- Mermaid -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mermaid/10.6.1/mermaid.min.js"></script>
+    
+    <style>
+        :root {
+            --bg-primary: #0d1117;
+            --bg-secondary: #161b22;
+            --bg-tertiary: #21262d;
+            --bg-code: #1a1f26;
+            --text-primary: #e6edf3;
+            --text-secondary: #8b949e;
+            --text-muted: #6e7681;
+            --border-color: #30363d;
+            --accent-blue: #58a6ff;
+            --accent-green: #3fb950;
+            --accent-purple: #a371f7;
+            --accent-orange: #d29922;
+            --accent-red: #f85149;
+            --accent-cyan: #39c5cf;
+            --sidebar-width: 280px;
+            --header-height: 60px;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html {
+            scroll-behavior: smooth;
+            scroll-padding-top: calc(var(--header-height) + 24px);
+        }
+
+        body {
+            font-family: 'Source Sans 3', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.6;
+            font-size: 16px;
+        }
+
+        /* Header */
+        .header {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: var(--header-height);
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            align-items: center;
+            padding: 0 24px;
+            z-index: 100;
+            backdrop-filter: blur(12px);
+        }
+
+        .header-logo {
+            font-family: 'Source Serif 4', Georgia, serif;
+            font-size: 1.5rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .header-logo .icon {
+            width: 32px;
+            height: 32px;
+            background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+        }
+
+        .header-version {
+            margin-left: auto;
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+            background: var(--bg-tertiary);
+            padding: 4px 12px;
+            border-radius: 20px;
+        }
+
+        /* Sidebar */
+        .sidebar {
+            position: fixed;
+            top: var(--header-height);
+            left: 0;
+            width: var(--sidebar-width);
+            height: calc(100vh - var(--header-height));
+            background: var(--bg-secondary);
+            border-right: 1px solid var(--border-color);
+            overflow-y: auto;
+            padding: 24px 0;
+            z-index: 50;
+        }
+
+        .sidebar-section {
+            margin-bottom: 24px;
+        }
+
+        .sidebar-title {
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-muted);
+            padding: 0 24px;
+            margin-bottom: 8px;
+        }
+
+        .sidebar-nav {
+            list-style: none;
+        }
+
+        .sidebar-nav a {
+            display: block;
+            padding: 8px 24px;
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-size: 0.9375rem;
+            transition: all 0.15s ease;
+            border-left: 2px solid transparent;
+        }
+
+        .sidebar-nav a:hover {
+            color: var(--text-primary);
+            background: var(--bg-tertiary);
+            border-left-color: var(--accent-blue);
+        }
+
+        .sidebar-nav a.active {
+            color: var(--accent-blue);
+            background: rgba(88, 166, 255, 0.1);
+            border-left-color: var(--accent-blue);
+        }
+
+        .sidebar-nav .sub-item {
+            padding-left: 40px;
+            font-size: 0.875rem;
+        }
+
+        /* Main Content */
+        .main {
+            margin-left: var(--sidebar-width);
+            margin-top: var(--header-height);
+            min-height: calc(100vh - var(--header-height));
+        }
+
+        .content {
+            max-width: 900px;
+            padding: 48px;
+        }
+
+        /* Typography */
+        h1, h2, h3, h4 {
+            font-family: 'Source Serif 4', Georgia, serif;
+            color: var(--text-primary);
+            margin-bottom: 16px;
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            font-weight: 600;
+            margin-bottom: 24px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        h2 {
+            font-size: 1.75rem;
+            font-weight: 600;
+            margin-top: 48px;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        h2 .section-icon {
+            width: 32px;
+            height: 32px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+        }
+
+        h3 {
+            font-size: 1.25rem;
+            font-weight: 600;
+            margin-top: 32px;
+            margin-bottom: 12px;
+            color: var(--text-primary);
+        }
+
+        h4 {
+            font-size: 1rem;
+            font-weight: 600;
+            margin-top: 24px;
+            color: var(--text-secondary);
+        }
+
+        p {
+            margin-bottom: 16px;
+            color: var(--text-secondary);
+        }
+
+        .lead {
+            font-size: 1.125rem;
+            color: var(--text-primary);
+            margin-bottom: 32px;
+        }
+
+        /* Code */
+        code {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.875em;
+            background: var(--bg-code);
+            padding: 2px 6px;
+            border-radius: 4px;
+            color: var(--accent-cyan);
+        }
+
+        pre {
+            background: var(--bg-code) !important;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 20px !important;
+            margin: 16px 0 24px !important;
+            overflow-x: auto;
+        }
+
+        pre code {
+            background: none;
+            padding: 0;
+            font-size: 0.875rem;
+            line-height: 1.7;
+        }
+
+        /* Tables */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 16px 0 24px;
+            font-size: 0.9375rem;
+        }
+
+        th, td {
+            padding: 12px 16px;
+            text-align: left;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        th {
+            background: var(--bg-tertiary);
+            font-weight: 600;
+            color: var(--text-primary);
+            font-size: 0.875rem;
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+        }
+
+        td {
+            color: var(--text-secondary);
+        }
+
+        td code {
+            font-size: 0.8125rem;
+        }
+
+        tr:hover td {
+            background: var(--bg-secondary);
+        }
+
+        /* Diagrams */
+        .diagram-container {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 32px;
+            margin: 24px 0;
+            overflow-x: auto;
+        }
+
+        .diagram-container .mermaid {
+            display: flex;
+            justify-content: center;
+        }
+
+        .diagram-title {
+            font-size: 0.875rem;
+            font-weight: 600;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        /* Cards */
+        .card-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 16px;
+            margin: 24px 0;
+        }
+
+        .card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 20px;
+            transition: border-color 0.15s ease;
+        }
+
+        .card:hover {
+            border-color: var(--accent-blue);
+        }
+
+        .card-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            margin-bottom: 12px;
+        }
+
+        .card-title {
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 8px;
+        }
+
+        .card-desc {
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+            margin: 0;
+        }
+
+        /* Badges */
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
+        .badge-blue {
+            background: rgba(88, 166, 255, 0.15);
+            color: var(--accent-blue);
+        }
+
+        .badge-green {
+            background: rgba(63, 185, 80, 0.15);
+            color: var(--accent-green);
+        }
+
+        .badge-purple {
+            background: rgba(163, 113, 247, 0.15);
+            color: var(--accent-purple);
+        }
+
+        .badge-orange {
+            background: rgba(210, 153, 34, 0.15);
+            color: var(--accent-orange);
+        }
+
+        /* Callouts */
+        .callout {
+            padding: 16px 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+            border-left: 4px solid;
+        }
+
+        .callout-info {
+            background: rgba(88, 166, 255, 0.1);
+            border-color: var(--accent-blue);
+        }
+
+        .callout-warning {
+            background: rgba(210, 153, 34, 0.1);
+            border-color: var(--accent-orange);
+        }
+
+        .callout-success {
+            background: rgba(63, 185, 80, 0.1);
+            border-color: var(--accent-green);
+        }
+
+        .callout-title {
+            font-weight: 600;
+            margin-bottom: 4px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .callout p {
+            margin: 0;
+            font-size: 0.9375rem;
+        }
+
+        /* Method signatures */
+        .method-signature {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 16px 20px;
+            margin: 16px 0;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.875rem;
+            overflow-x: auto;
+        }
+
+        .method-name {
+            color: var(--accent-blue);
+        }
+
+        .method-param {
+            color: var(--accent-orange);
+        }
+
+        .method-type {
+            color: var(--accent-purple);
+        }
+
+        .method-return {
+            color: var(--accent-green);
+        }
+
+        /* File tree */
+        .file-tree {
+            background: var(--bg-code);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 20px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.875rem;
+            line-height: 1.8;
+            margin: 16px 0 24px;
+        }
+
+        .file-tree .folder {
+            color: var(--accent-blue);
+        }
+
+        .file-tree .file {
+            color: var(--text-secondary);
+        }
+
+        .file-tree .file-new {
+            color: var(--accent-green);
+        }
+
+        /* Lists */
+        ul, ol {
+            margin: 16px 0;
+            padding-left: 24px;
+            color: var(--text-secondary);
+        }
+
+        li {
+            margin-bottom: 8px;
+        }
+
+        li::marker {
+            color: var(--accent-blue);
+        }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: var(--bg-primary);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--bg-tertiary);
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--border-color);
+        }
+
+        /* Responsive */
+        @media (max-width: 1024px) {
+            .sidebar {
+                transform: translateX(-100%);
+            }
+
+            .main {
+                margin-left: 0;
+            }
+
+            .content {
+                padding: 32px 24px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Header -->
+    <header class="header">
+        <div class="header-logo">
+            <span class="icon">📷</span>
+            Image Module
+        </div>
+        <span class="header-version">v1.0.0 · Laravel 12</span>
+    </header>
+
+    <!-- Sidebar -->
+    <aside class="sidebar">
+        <div class="sidebar-section">
+            <div class="sidebar-title">Начало</div>
+            <ul class="sidebar-nav">
+                <li><a href="#overview">Обзор</a></li>
+                <li><a href="#installation">Установка</a></li>
+                <li><a href="#configuration">Конфигурация</a></li>
+            </ul>
+        </div>
+
+        <div class="sidebar-section">
+            <div class="sidebar-title">Архитектура</div>
+            <ul class="sidebar-nav">
+                <li><a href="#architecture">Структура модуля</a></li>
+                <li><a href="#dependencies">Граф зависимостей</a></li>
+                <li><a href="#flow">Flow обработки</a></li>
+            </ul>
+        </div>
+
+        <div class="sidebar-section">
+            <div class="sidebar-title">Контракты</div>
+            <ul class="sidebar-nav">
+                <li><a href="#image-service">ImageService</a></li>
+                <li><a href="#image-repository">ImageRepository</a></li>
+                <li><a href="#queue-dispatcher">QueueDispatcher</a></li>
+                <li><a href="#path-service">PathService</a></li>
+            </ul>
+        </div>
+
+        <div class="sidebar-section">
+            <div class="sidebar-title">Компоненты</div>
+            <ul class="sidebar-nav">
+                <li><a href="#jobs">Джобы</a></li>
+                <li><a href="#model">Модель Image</a></li>
+                <li><a href="#controller">Контроллер</a></li>
+                <li><a href="#command">Консольная команда</a></li>
+            </ul>
+        </div>
+
+        <div class="sidebar-section">
+            <div class="sidebar-title">Дополнительно</div>
+            <ul class="sidebar-nav">
+                <li><a href="#testing">Тестирование</a></li>
+                <li><a href="#troubleshooting">Troubleshooting</a></li>
+            </ul>
+        </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main">
+        <div class="content">
+
+            <!-- Overview -->
+            <section id="overview">
+                <h1>Image Module</h1>
+                <p class="lead">
+                    Модуль обработки изображений для Laravel-приложения. Обеспечивает загрузку, 
+                    обработку и хранение изображений с поддержкой очередей, дедупликации и 
+                    распознавания лиц.
+                </p>
+
+                <div class="card-grid">
+                    <div class="card">
+                        <div class="card-icon" style="background: rgba(88, 166, 255, 0.15);">📤</div>
+                        <div class="card-title">Загрузка</div>
+                        <p class="card-desc">FTP-загрузка с автоматической постановкой в очередь обработки</p>
+                    </div>
+                    <div class="card">
+                        <div class="card-icon" style="background: rgba(163, 113, 247, 0.15);">🔍</div>
+                        <div class="card-title">Дедупликация</div>
+                        <p class="card-desc">MD5 + Perceptual Hash для поиска дубликатов и похожих изображений</p>
+                    </div>
+                    <div class="card">
+                        <div class="card-icon" style="background: rgba(63, 185, 80, 0.15);">🖼️</div>
+                        <div class="card-title">Thumbnails</div>
+                        <p class="card-desc">Автоматическая генерация миниатюр через Intervention Image</p>
+                    </div>
+                    <div class="card">
+                        <div class="card-icon" style="background: rgba(210, 153, 34, 0.15);">👤</div>
+                        <div class="card-title">Face Recognition</div>
+                        <p class="card-desc">Распознавание и группировка лиц через Face API</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Installation -->
+            <section id="installation">
+                <h2><span class="section-icon" style="background: rgba(63, 185, 80, 0.15);">⚡</span> Установка</h2>
+
+                <h3>1. Скопировать файлы</h3>
+                <p>Распаковать архив <code>image-refactored.zip</code> в директорию <code>app/</code></p>
+
+                <div class="file-tree">
+<span class="folder">app/</span>
+├── <span class="folder">Contracts/</span>
+│   ├── <span class="file-new">ImagePathServiceInterface.php</span>
+│   ├── <span class="file-new">ImageQueueDispatcherInterface.php</span>
+│   ├── <span class="file-new">ImageRepositoryInterface.php</span>
+│   └── <span class="file-new">ImageServiceInterface.php</span>
+├── <span class="folder">Repositories/</span>
+│   └── <span class="file-new">ImageRepository.php</span>
+├── <span class="folder">Services/</span>
+│   ├── <span class="file-new">ImagePathService.php</span>
+│   ├── <span class="file-new">ImageQueueDispatcher.php</span>
+│   └── <span class="file-new">ImageService.php</span>
+├── <span class="folder">Providers/</span>
+│   └── <span class="file-new">ImageServiceProvider.php</span>
+└── <span class="folder">Models/</span>
+    └── <span class="file">Image.php</span> <span class="badge badge-orange">modified</span>
+                </div>
+
+                <h3>2. Зарегистрировать провайдер</h3>
+                <p>Добавить в <code>bootstrap/providers.php</code>:</p>
+
+                <pre><code class="language-php">&lt;?php
+
+return [
+    App\Providers\AppServiceProvider::class,
+    App\Providers\ImageServiceProvider::class,  // ← добавить
+];</code></pre>
+
+                <h3>3. Проверить биндинги</h3>
+                <pre><code class="language-bash">php artisan tinker
+
+>>> app(App\Contracts\ImageServiceInterface::class)
+=> App\Services\ImageService {#...}</code></pre>
+            </section>
+
+            <!-- Configuration -->
+            <section id="configuration">
+                <h2><span class="section-icon" style="background: rgba(210, 153, 34, 0.15);">⚙️</span> Конфигурация</h2>
+
+                <p>Все настройки модуля находятся в <code>config/image.php</code>:</p>
+
+                <pre><code class="language-php">&lt;?php
+
+return [
+    'paths' => [
+        'disk' => env('IMAGE_DISK', 'private'),
+        'images' => env('IMAGE_PATH', 'images'),
+        'debug_subdir' => env('IMAGE_DEBUG_SUBDIR', 'debug'),
+    ],
+
+    'thumbnails' => [
+        'width' => env('THUMBNAIL_WIDTH', 300),
+        'height' => env('THUMBNAIL_HEIGHT', 200),
+        'method' => env('THUMBNAIL_METHOD', 'cover'),
+        'dir_format' => env('THUMBNAIL_DIR_FORMAT', '{width}x{height}'),
+        'postfix' => env('THUMBNAIL_POSTFIX', '_{method}_{width}x{height}'),
+    ],
+
+    'processing' => [
+        'phash_distance_threshold' => env('PHASH_DISTANCE_THRESHOLD', 5),
+    ],
+
+    'face_api' => [
+        'url' => env('FACE_API_URL', 'http://127.0.0.1:5000'),
+        'threshold' => env('FACE_RECOGNITION_THRESHOLD', 0.6),
+    ],
+];</code></pre>
+
+                <h3>Параметры</h3>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Параметр</th>
+                            <th>Тип</th>
+                            <th>По умолчанию</th>
+                            <th>Описание</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code>paths.disk</code></td>
+                            <td>string</td>
+                            <td>private</td>
+                            <td>Storage disk для изображений</td>
+                        </tr>
+                        <tr>
+                            <td><code>paths.images</code></td>
+                            <td>string</td>
+                            <td>images</td>
+                            <td>Базовая директория</td>
+                        </tr>
+                        <tr>
+                            <td><code>thumbnails.method</code></td>
+                            <td>string</td>
+                            <td>cover</td>
+                            <td>cover, scale, resize, contain</td>
+                        </tr>
+                        <tr>
+                            <td><code>processing.phash_distance_threshold</code></td>
+                            <td>int</td>
+                            <td>5</td>
+                            <td>Порог схожести (меньше = строже)</td>
+                        </tr>
+                        <tr>
+                            <td><code>face_api.threshold</code></td>
+                            <td>float</td>
+                            <td>0.6</td>
+                            <td>Порог распознавания лиц</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </section>
+
+            <!-- Architecture -->
+            <section id="architecture">
+                <h2><span class="section-icon" style="background: rgba(88, 166, 255, 0.15);">🏗️</span> Структура модуля</h2>
+
+                <p>Модуль построен на принципах SOLID с использованием интерфейсов и Dependency Injection:</p>
+
+                <div class="diagram-container">
+                    <div class="diagram-title">Архитектура компонентов</div>
+                    <div class="mermaid">
+graph TB
+    subgraph Entry["Entry Points"]
+        Controller["ApiImageActionController"]
+        Command["ImagesProcess Command"]
+    end
+
+    subgraph Core["Core Services"]
+        IS["ImageService"]
+        IR["ImageRepository"]
+        IQD["ImageQueueDispatcher"]
+        IPS["ImagePathService"]
+    end
+
+    subgraph Jobs["Queue Jobs"]
+        IPJ["ImageProcessJob"]
+        TPJ["ThumbnailProcessJob"]
+        MPJ["MetadataProcessJob"]
+        GPJ["GeolocationProcessJob"]
+        FPJ["FaceProcessJob"]
+    end
+
+    subgraph Data["Data Layer"]
+        Model["Image Model"]
+        DB[(Database)]
+        Storage[(Storage)]
+    end
+
+    Controller --> IS
+    Command --> IS
+    IS --> IR
+    IS --> IQD
+    IQD --> IPS
+    IQD --> IPJ
+    IQD --> TPJ
+    IQD --> MPJ
+    IQD --> FPJ
+    MPJ -.-> GPJ
+    IR --> Model
+    Model --> DB
+    IPS --> Storage
+    IPJ --> IR
+    IPJ --> IPS
+
+    style IS fill:#58a6ff,stroke:#58a6ff,color:#0d1117
+    style IR fill:#a371f7,stroke:#a371f7,color:#0d1117
+    style IQD fill:#3fb950,stroke:#3fb950,color:#0d1117
+    style IPS fill:#d29922,stroke:#d29922,color:#0d1117
+                    </div>
+                </div>
+
+                <div class="callout callout-info">
+                    <div class="callout-title">💡 Принцип работы</div>
+                    <p>Все entry points используют <code>ImageService</code> как единую точку входа. 
+                    Сервис координирует работу репозитория (БД) и диспетчера очередей (jobs).</p>
+                </div>
+            </section>
+
+            <!-- Dependencies -->
+            <section id="dependencies">
+                <h2><span class="section-icon" style="background: rgba(163, 113, 247, 0.15);">🔗</span> Граф зависимостей</h2>
+
+                <div class="diagram-container">
+                    <div class="diagram-title">Dependency Injection</div>
+                    <div class="mermaid">
+graph LR
+    subgraph Interfaces
+        ISI["ImageServiceInterface"]
+        IRI["ImageRepositoryInterface"]
+        IQDI["ImageQueueDispatcherInterface"]
+        IPSI["ImagePathServiceInterface"]
+    end
+
+    subgraph Implementations
+        IS["ImageService"]
+        IR["ImageRepository"]
+        IQD["ImageQueueDispatcher"]
+        IPS["ImagePathService"]
+    end
+
+    ISI --> IS
+    IRI --> IR
+    IQDI --> IQD
+    IPSI --> IPS
+
+    IS --> IRI
+    IS --> IQDI
+    IQD --> IPSI
+
+    style ISI fill:#58a6ff,stroke:#58a6ff,color:#0d1117
+    style IRI fill:#a371f7,stroke:#a371f7,color:#0d1117
+    style IQDI fill:#3fb950,stroke:#3fb950,color:#0d1117
+    style IPSI fill:#d29922,stroke:#d29922,color:#0d1117
+                    </div>
+                </div>
+
+                <h3>Регистрация в контейнере</h3>
+                <pre><code class="language-php">// ImageServiceProvider.php
+
+public array $bindings = [
+    ImagePathServiceInterface::class => ImagePathService::class,
+    ImageRepositoryInterface::class => ImageRepository::class,
+    ImageQueueDispatcherInterface::class => ImageQueueDispatcher::class,
+    ImageServiceInterface::class => ImageService::class,
+];</code></pre>
+            </section>
+
+            <!-- Flow -->
+            <section id="flow">
+                <h2><span class="section-icon" style="background: rgba(63, 185, 80, 0.15);">🔄</span> Flow обработки</h2>
+
+                <div class="diagram-container">
+                    <div class="diagram-title">Процесс обработки изображения</div>
+                    <div class="mermaid">
+sequenceDiagram
+    participant FTP
+    participant Controller
+    participant ImageService
+    participant Repository
+    participant Dispatcher
+    participant Queue
+
+    FTP->>Controller: POST /api/image/upload
+    Controller->>ImageService: processNewUpload()
+    ImageService->>Repository: exists()
+    Repository-->>ImageService: false
+    ImageService->>Repository: prepareImageData()
+    ImageService->>Repository: updateOrCreate()
+    Repository-->>ImageService: Image
+    ImageService->>Dispatcher: dispatchAll()
+    
+    par Parallel Jobs
+        Dispatcher->>Queue: ImageProcessJob
+        Dispatcher->>Queue: ThumbnailProcessJob
+        Dispatcher->>Queue: MetadataProcessJob
+        Dispatcher->>Queue: FaceProcessJob
+    end
+    
+    Dispatcher-->>ImageService: statuses
+    ImageService-->>Controller: result
+    Controller-->>FTP: JSON response
+                    </div>
+                </div>
+
+                <h3>Цепочка Metadata → Geolocation</h3>
+                <div class="diagram-container">
+                    <div class="mermaid">
+flowchart LR
+    A[MetadataProcessJob] --> B{GPS данные?}
+    B -->|Да| C[GeolocationProcessJob]
+    B -->|Нет| D[Завершение]
+    C --> E[Nominatim API]
+    E --> F[Сохранение адреса]
+    F --> D
+
+    style A fill:#a371f7,stroke:#a371f7,color:#0d1117
+    style C fill:#3fb950,stroke:#3fb950,color:#0d1117
+                    </div>
+                </div>
+            </section>
+
+            <!-- ImageService -->
+            <section id="image-service">
+                <h2><span class="section-icon" style="background: rgba(88, 166, 255, 0.15);">📦</span> ImageService</h2>
+
+                <p>Главная точка входа для обработки изображений. Координирует работу репозитория и диспетчера очередей.</p>
+
+                <span class="badge badge-blue">App\Contracts\ImageServiceInterface</span>
+                <span class="badge badge-purple">App\Services\ImageService</span>
+
+                <h3>Методы</h3>
+
+                <h4>processNewUpload()</h4>
+                <div class="method-signature">
+                    <span class="method-type">public function</span> 
+                    <span class="method-name">processNewUpload</span>(
+                    <span class="method-param">string $disk</span>,
+                    <span class="method-param">string $path</span>,
+                    <span class="method-param">string $filename</span>,
+                    <span class="method-param">bool $skipIfExists = false</span>
+                    ): <span class="method-return">array</span>
+                </div>
+
+                <p>Обрабатывает новое загруженное изображение: создаёт запись в БД и ставит в очередь все джобы.</p>
+
+                <table>
+                    <thead>
+                        <tr><th>Параметр</th><th>Тип</th><th>Описание</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code>$disk</code></td>
+                            <td>string</td>
+                            <td>Storage disk</td>
+                        </tr>
+                        <tr>
+                            <td><code>$path</code></td>
+                            <td>string</td>
+                            <td>Путь к файлу</td>
+                        </tr>
+                        <tr>
+                            <td><code>$filename</code></td>
+                            <td>string</td>
+                            <td>Имя файла</td>
+                        </tr>
+                        <tr>
+                            <td><code>$skipIfExists</code></td>
+                            <td>bool</td>
+                            <td>Пропустить если существует</td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <p><strong>Возвращает:</strong></p>
+                <pre><code class="language-php">[
+    'success' => true,
+    'image' => Image,
+    'message' => 'Image uploaded and processing started',
+    'queue_statuses' => [
+        'image' => 'success',
+        'thumbnail' => 'success',
+        'metadata' => 'success',
+        'face' => 'success',
+    ]
+]</code></pre>
+
+                <h4>queueForProcessing()</h4>
+                <div class="method-signature">
+                    <span class="method-type">public function</span> 
+                    <span class="method-name">queueForProcessing</span>(
+                    <span class="method-param">Image $image</span>
+                    ): <span class="method-return">array</span>
+                </div>
+                <p>Ставит существующее изображение в очередь на переобработку.</p>
+            </section>
+
+            <!-- ImageRepository -->
+            <section id="image-repository">
+                <h2><span class="section-icon" style="background: rgba(163, 113, 247, 0.15);">🗄️</span> ImageRepository</h2>
+
+                <p>Абстракция над моделью Image для работы с БД.</p>
+
+                <span class="badge badge-blue">App\Contracts\ImageRepositoryInterface</span>
+                <span class="badge badge-purple">App\Repositories\ImageRepository</span>
+
+                <h3>Методы</h3>
+
+                <table>
+                    <thead>
+                        <tr><th>Метод</th><th>Описание</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code>prepareImageData(disk, path, filename)</code></td>
+                            <td>Подготовка данных для создания записи</td>
+                        </tr>
+                        <tr>
+                            <td><code>exists(disk, path, filename)</code></td>
+                            <td>Проверка существования в БД</td>
+                        </tr>
+                        <tr>
+                            <td><code>updateOrCreate(array $data)</code></td>
+                            <td>Создать или обновить запись</td>
+                        </tr>
+                        <tr>
+                            <td><code>find(int $id)</code></td>
+                            <td>Найти по ID</td>
+                        </tr>
+                        <tr>
+                            <td><code>findOrFail(int $id)</code></td>
+                            <td>Найти или выбросить исключение</td>
+                        </tr>
+                        <tr>
+                            <td><code>findSimilarByPhash(hexHash, maxDistance)</code></td>
+                            <td>Найти похожее по perceptual hash</td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <h3>Пример использования</h3>
+                <pre><code class="language-php">$repository = app(ImageRepositoryInterface::class);
+
+// Проверить существование
+if (!$repository->exists('private', 'images', 'photo.jpg')) {
+    
+    // Подготовить данные
+    $data = $repository->prepareImageData('private', 'images', 'photo.jpg');
+    
+    // Создать запись
+    $image = $repository->updateOrCreate($data);
+}</code></pre>
+            </section>
+
+            <!-- QueueDispatcher -->
+            <section id="queue-dispatcher">
+                <h2><span class="section-icon" style="background: rgba(63, 185, 80, 0.15);">📤</span> ImageQueueDispatcher</h2>
+
+                <p>Отвечает за постановку джобов в очередь.</p>
+
+                <span class="badge badge-blue">App\Contracts\ImageQueueDispatcherInterface</span>
+                <span class="badge badge-green">App\Services\ImageQueueDispatcher</span>
+
+                <h3>Методы</h3>
+
+                <table>
+                    <thead>
+                        <tr><th>Метод</th><th>Очередь</th><th>Описание</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code>dispatchAll(image, preparedData)</code></td>
+                            <td>all</td>
+                            <td>Все джобы сразу</td>
+                        </tr>
+                        <tr>
+                            <td><code>dispatchImageProcess(image)</code></td>
+                            <td>images</td>
+                            <td>Размеры и хеши</td>
+                        </tr>
+                        <tr>
+                            <td><code>dispatchThumbnail(image, data)</code></td>
+                            <td>thumbnails</td>
+                            <td>Генерация миниатюр</td>
+                        </tr>
+                        <tr>
+                            <td><code>dispatchMetadata(image, data)</code></td>
+                            <td>metadatas</td>
+                            <td>Извлечение EXIF</td>
+                        </tr>
+                        <tr>
+                            <td><code>dispatchFace(image)</code></td>
+                            <td>faces</td>
+                            <td>Распознавание лиц</td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <h3>Возвращаемые статусы</h3>
+                <ul>
+                    <li><code>success</code> — джоба добавлена в очередь</li>
+                    <li><code>exists</code> — джоба уже в очереди (дедупликация)</li>
+                    <li><code>error</code> — ошибка при добавлении</li>
+                </ul>
+            </section>
+
+            <!-- PathService -->
+            <section id="path-service">
+                <h2><span class="section-icon" style="background: rgba(210, 153, 34, 0.15);">📁</span> ImagePathService</h2>
+
+                <p>Работа с путями файлов и генерация имён.</p>
+
+                <span class="badge badge-blue">App\Contracts\ImagePathServiceInterface</span>
+                <span class="badge badge-orange">App\Services\ImagePathService</span>
+
+                <h3>Методы</h3>
+
+                <table>
+                    <thead>
+                        <tr><th>Метод</th><th>Возвращает</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code>getImagePathByObj(Image)</code></td>
+                            <td>Полный путь к оригиналу</td>
+                        </tr>
+                        <tr>
+                            <td><code>getImagePathByParams(disk, path, filename)</code></td>
+                            <td>Полный путь по параметрам</td>
+                        </tr>
+                        <tr>
+                            <td><code>getDebugImagePath(Image)</code></td>
+                            <td>Путь к debug-изображению</td>
+                        </tr>
+                        <tr>
+                            <td><code>getThumbnailSubdir(width, height)</code></td>
+                            <td>Поддиректория (например, "300x200")</td>
+                        </tr>
+                        <tr>
+                            <td><code>getThumbnailFilename(filename, method, w, h)</code></td>
+                            <td>Имя файла thumbnail</td>
+                        </tr>
+                        <tr>
+                            <td><code>getDefaultThumbnailPath(Image)</code></td>
+                            <td>Полный путь к thumbnail по умолчанию</td>
+                        </tr>
+                        <tr>
+                            <td><code>getThumbnailUrl(Image)</code></td>
+                            <td>URL для frontend</td>
+                        </tr>
+                        <tr>
+                            <td><code>getImageUrl(Image)</code></td>
+                            <td>URL оригинала для frontend</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </section>
+
+            <!-- Jobs -->
+            <section id="jobs">
+                <h2><span class="section-icon" style="background: rgba(163, 113, 247, 0.15);">⚡</span> Джобы</h2>
+
+                <div class="card-grid">
+                    <div class="card">
+                        <div class="card-icon" style="background: rgba(88, 166, 255, 0.15);">🖼️</div>
+                        <div class="card-title">ImageProcessJob</div>
+                        <p class="card-desc">MD5, perceptual hash, размеры, поиск дубликатов</p>
+                        <span class="badge badge-blue">images</span>
+                    </div>
+                    <div class="card">
+                        <div class="card-icon" style="background: rgba(163, 113, 247, 0.15);">📐</div>
+                        <div class="card-title">ThumbnailProcessJob</div>
+                        <p class="card-desc">Генерация миниатюр через Intervention Image</p>
+                        <span class="badge badge-purple">thumbnails</span>
+                    </div>
+                    <div class="card">
+                        <div class="card-icon" style="background: rgba(63, 185, 80, 0.15);">📋</div>
+                        <div class="card-title">MetadataProcessJob</div>
+                        <p class="card-desc">Извлечение EXIF через ExifTool</p>
+                        <span class="badge badge-green">metadatas</span>
+                    </div>
+                    <div class="card">
+                        <div class="card-icon" style="background: rgba(210, 153, 34, 0.15);">📍</div>
+                        <div class="card-title">GeolocationProcessJob</div>
+                        <p class="card-desc">Геокодинг через Nominatim API</p>
+                        <span class="badge badge-orange">geolocation</span>
+                    </div>
+                    <div class="card">
+                        <div class="card-icon" style="background: rgba(248, 81, 73, 0.15);">👤</div>
+                        <div class="card-title">FaceProcessJob</div>
+                        <p class="card-desc">Распознавание лиц через Face API</p>
+                        <span class="badge badge-blue">faces</span>
+                    </div>
+                </div>
+
+                <h3>Supervisor конфигурация</h3>
+                <table>
+                    <thead>
+                        <tr><th>Очередь</th><th>Workers</th><th>Timeout</th><th>Примечание</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>images</td>
+                            <td>4</td>
+                            <td>120s</td>
+                            <td>—</td>
+                        </tr>
+                        <tr>
+                            <td>thumbnails</td>
+                            <td>4</td>
+                            <td>120s</td>
+                            <td>—</td>
+                        </tr>
+                        <tr>
+                            <td>metadatas</td>
+                            <td>4</td>
+                            <td>120s</td>
+                            <td>—</td>
+                        </tr>
+                        <tr>
+                            <td>geolocation</td>
+                            <td>1</td>
+                            <td>120s</td>
+                            <td>⚠️ Rate limit 1 req/sec</td>
+                        </tr>
+                        <tr>
+                            <td>faces</td>
+                            <td>8</td>
+                            <td>360s</td>
+                            <td>CPU-intensive</td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <div class="callout callout-warning">
+                    <div class="callout-title">⚠️ Важно: Geolocation</div>
+                    <p>Nominatim API имеет ограничение 1 запрос в секунду. Обязательно используйте <code>numprocs=1</code> в Supervisor!</p>
+                </div>
+            </section>
+
+            <!-- Model -->
+            <section id="model">
+                <h2><span class="section-icon" style="background: rgba(88, 166, 255, 0.15);">🗃️</span> Модель Image</h2>
+
+                <p>Eloquent модель для работы с изображениями. Бизнес-логика вынесена в сервисы.</p>
+
+                <h3>Статусы</h3>
+                <table>
+                    <thead>
+                        <tr><th>Константа</th><th>Значение</th><th>Описание</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code>STATUS_PROCESS</code></td>
+                            <td>process</td>
+                            <td>В обработке</td>
+                        </tr>
+                        <tr>
+                            <td><code>STATUS_OK</code></td>
+                            <td>ok</td>
+                            <td>Обработано успешно</td>
+                        </tr>
+                        <tr>
+                            <td><code>STATUS_RECHECK</code></td>
+                            <td>recheck</td>
+                            <td>Требует проверки</td>
+                        </tr>
+                        <tr>
+                            <td><code>STATUS_NOT_PHOTO</code></td>
+                            <td>not_photo</td>
+                            <td>Не фотография</td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <h3>Отношения</h3>
+                <pre><code class="language-php">// Родитель (дубликат)
+$image->parent();        // belongsTo Image
+
+// Дочерние (дубликаты этого)
+$image->children();      // hasMany Image
+
+// Лица на изображении
+$image->faces();         // hasMany Face
+
+// Геолокация
+$image->geolocationPoint();    // belongsTo ImageGeolocationPoint
+$image->geolocationAddress();  // hasOneThrough ImageGeolocationAddress</code></pre>
+
+                <h3>Hash атрибуты</h3>
+                <p>Поля <code>hash</code> и <code>phash</code> автоматически конвертируются:</p>
+                <ul>
+                    <li>При записи: hex → binary</li>
+                    <li>При чтении: binary → hex</li>
+                </ul>
+            </section>
+
+            <!-- Controller -->
+            <section id="controller">
+                <h2><span class="section-icon" style="background: rgba(63, 185, 80, 0.15);">🎮</span> Контроллер</h2>
+
+                <p><code>ApiImageActionController</code> — REST API для работы с изображениями.</p>
+
+                <h3>Endpoints</h3>
+                <table>
+                    <thead>
+                        <tr><th>Method</th><th>URI</th><th>Описание</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><span class="badge badge-green">POST</span></td>
+                            <td><code>/api/image/upload</code></td>
+                            <td>Загрузка нового изображения</td>
+                        </tr>
+                        <tr>
+                            <td><span class="badge badge-blue">GET</span></td>
+                            <td><code>/api/image/{id}</code></td>
+                            <td>Получить оригинал</td>
+                        </tr>
+                        <tr>
+                            <td><span class="badge badge-blue">GET</span></td>
+                            <td><code>/api/image/{id}/thumbnail</code></td>
+                            <td>Получить миниатюру</td>
+                        </tr>
+                        <tr>
+                            <td><span class="badge badge-blue">GET</span></td>
+                            <td><code>/api/image/{id}/debug</code></td>
+                            <td>Debug изображение</td>
+                        </tr>
+                        <tr>
+                            <td><span class="badge badge-blue">GET</span></td>
+                            <td><code>/api/image/{id}/nearby</code></td>
+                            <td>Соседние изображения</td>
+                        </tr>
+                        <tr>
+                            <td><span class="badge badge-purple">PATCH</span></td>
+                            <td><code>/api/image/{id}/status</code></td>
+                            <td>Изменить статус</td>
+                        </tr>
+                        <tr>
+                            <td><span class="badge badge-purple">PATCH</span></td>
+                            <td><code>/api/image/{id}/complete</code></td>
+                            <td>Пометить как готовое</td>
+                        </tr>
+                        <tr>
+                            <td><span class="badge badge-orange">DELETE</span></td>
+                            <td><code>/api/image/{id}</code></td>
+                            <td>Удалить (soft)</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </section>
+
+            <!-- Command -->
+            <section id="command">
+                <h2><span class="section-icon" style="background: rgba(210, 153, 34, 0.15);">💻</span> Консольная команда</h2>
+
+                <p>Команда <code>images:process</code> для batch-обработки изображений.</p>
+
+                <h3>Использование</h3>
+                <pre><code class="language-bash"># Обработать все изображения в директории
+php artisan images:process private images
+
+# Пропустить уже существующие
+php artisan images:process private images --skip-existing</code></pre>
+
+                <h3>Аргументы</h3>
+                <table>
+                    <thead>
+                        <tr><th>Аргумент/Опция</th><th>Описание</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code>disk</code></td>
+                            <td>Storage disk (обязательный)</td>
+                        </tr>
+                        <tr>
+                            <td><code>source</code></td>
+                            <td>Директория с изображениями (обязательный)</td>
+                        </tr>
+                        <tr>
+                            <td><code>--skip-existing</code></td>
+                            <td>Пропустить уже обработанные</td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <div class="callout callout-info">
+                    <div class="callout-title">💡 Автоматически пропускаются</div>
+                    <p>Директории <code>debug/</code> и директории формата <code>WIDTHxHEIGHT</code> (например, <code>300x200/</code>)</p>
+                </div>
+            </section>
+
+            <!-- Testing -->
+            <section id="testing">
+                <h2><span class="section-icon" style="background: rgba(63, 185, 80, 0.15);">🧪</span> Тестирование</h2>
+
+                <p>Благодаря интерфейсам все зависимости легко мокаются:</p>
+
+                <pre><code class="language-php">use App\Contracts\ImageRepositoryInterface;
+use App\Contracts\ImageQueueDispatcherInterface;
+use App\Services\ImageService;
+use Mockery;
+
+public function test_process_new_upload_creates_image()
+{
+    // Arrange
+    $mockRepo = Mockery::mock(ImageRepositoryInterface::class);
+    $mockRepo->shouldReceive('exists')->andReturn(false);
+    $mockRepo->shouldReceive('prepareImageData')->andReturn([
+        'source_disk' => 'private',
+        'source_path' => 'images',
+        'source_filename' => 'test.jpg',
+        'size' => 1024,
+        'created_at_file' => now(),
+        'updated_at_file' => now(),
+    ]);
+    $mockRepo->shouldReceive('updateOrCreate')
+        ->andReturn(new Image(['id' => 1]));
+
+    $mockDispatcher = Mockery::mock(ImageQueueDispatcherInterface::class);
+    $mockDispatcher->shouldReceive('dispatchAll')
+        ->once()
+        ->andReturn([
+            'image' => 'success',
+            'thumbnail' => 'success',
+            'metadata' => 'success',
+            'face' => 'success',
+        ]);
+
+    $service = new ImageService($mockRepo, $mockDispatcher);
+
+    // Act
+    $result = $service->processNewUpload(
+        'private', 'images', 'test.jpg'
+    );
+
+    // Assert
+    $this->assertTrue($result['success']);
+    $this->assertEquals(1, $result['image']->id);
+}</code></pre>
+
+                <h3>Что тестировать</h3>
+                <ul>
+                    <li><code>ImageService</code> — логика координации</li>
+                    <li><code>ImageRepository</code> — работа с БД (интеграционные тесты)</li>
+                    <li><code>ImageQueueDispatcher</code> — корректность данных для джобов</li>
+                    <li><code>ImagePathService</code> — генерация путей</li>
+                </ul>
+            </section>
+
+            <!-- Troubleshooting -->
+            <section id="troubleshooting">
+                <h2><span class="section-icon" style="background: rgba(248, 81, 73, 0.15);">🔧</span> Troubleshooting</h2>
+
+                <h3>Джоба не выполняется</h3>
+                <pre><code class="language-bash"># Проверить статус workers
+sudo supervisorctl status
+
+# Посмотреть логи
+tail -f storage/logs/supervisor-photo-*.log
+
+# Проверить очередь в RabbitMQ
+php artisan queue:work rabbitmq --queue=images --once</code></pre>
+
+                <h3>Дубликаты не находятся</h3>
+                <ul>
+                    <li>Проверить <code>phash_distance_threshold</code> в конфиге</li>
+                    <li>Убедиться что поле <code>phash</code> заполнено</li>
+                    <li>Проверить SQL запрос с <code>BIT_COUNT</code></li>
+                </ul>
+
+                <h3>Face API не отвечает</h3>
+                <pre><code class="language-bash"># Проверить статус
+systemctl status face-api
+
+# Health check
+curl http://127.0.0.1:5000/health
+
+# Логи
+tail -f storage/logs/face-api-error.log</code></pre>
+
+                <h3>Thumbnail не создаётся</h3>
+                <ul>
+                    <li>Проверить права на директорию (<code>775</code>)</li>
+                    <li>Проверить установку Imagick: <code>php -m | grep imagick</code></li>
+                    <li>Проверить путь в конфиге <code>image.thumbnails.dir_format</code></li>
+                </ul>
+            </section>
+
+        </div>
+    </main>
+
+    <!-- Scripts -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-php.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+
+    <script>
+        // Initialize Mermaid
+        mermaid.initialize({
+            startOnLoad: true,
+            theme: 'dark',
+            themeVariables: {
+                primaryColor: '#58a6ff',
+                primaryTextColor: '#e6edf3',
+                primaryBorderColor: '#30363d',
+                lineColor: '#8b949e',
+                secondaryColor: '#21262d',
+                tertiaryColor: '#161b22',
+                background: '#0d1117',
+                mainBkg: '#161b22',
+                nodeBorder: '#30363d',
+                clusterBkg: '#21262d',
+                titleColor: '#e6edf3',
+                edgeLabelBackground: '#161b22'
+            },
+            flowchart: {
+                curve: 'basis',
+                padding: 20
+            },
+            sequence: {
+                actorMargin: 50,
+                mirrorActors: false
+            }
+        });
+
+        // Active nav link
+        const sections = document.querySelectorAll('section[id]');
+        const navLinks = document.querySelectorAll('.sidebar-nav a');
+
+        function setActiveLink() {
+            let current = '';
+            sections.forEach(section => {
+                const sectionTop = section.offsetTop;
+                if (scrollY >= sectionTop - 100) {
+                    current = section.getAttribute('id');
+                }
+            });
+
+            navLinks.forEach(link => {
+                link.classList.remove('active');
+                if (link.getAttribute('href') === '#' + current) {
+                    link.classList.add('active');
+                }
+            });
+        }
+
+        window.addEventListener('scroll', setActiveLink);
+        setActiveLink();
+    </script>
+</body>
+</html>
