@@ -83,79 +83,83 @@ abstract class TestCase extends BaseTestCase
 
     /**
      * Создаёт схему БД
+     * 
+     * Примечание: SQLite не поддерживает ENUM, POINT, POLYGON.
+     * Используем приближённые типы для тестирования.
      */
     protected function createDatabaseSchema(): void
     {
         // images
         Schema::create('images', function ($table) {
             $table->id();
-            $table->string('disk', 50)->default('private');
-            $table->string('path', 500);
-            $table->string('filename', 255);
+            $table->unsignedBigInteger('parent_id')->nullable();
+            $table->unsignedBigInteger('image_geolocation_point_id')->nullable();
+            $table->string('disk')->nullable();
+            $table->string('path')->nullable();
+            $table->string('filename');
+            $table->string('debug_filename')->nullable();
             $table->integer('width')->nullable();
             $table->integer('height')->nullable();
-            $table->bigInteger('size')->nullable();
-            $table->binary('hash')->nullable();
-            $table->binary('phash')->nullable();
-            $table->unsignedBigInteger('parent_id')->nullable();
+            $table->integer('size')->nullable();
+            $table->binary('hash')->nullable(); // binary(16)
+            $table->binary('phash')->nullable(); // binary(8)
+            $table->dateTime('created_at_file')->nullable();
+            $table->dateTime('updated_at_file')->nullable();
+            $table->json('metadata')->nullable();
+            $table->boolean('faces_checked')->default(false);
             $table->string('thumbnail_path')->nullable();
             $table->string('thumbnail_filename')->nullable();
-            $table->string('thumbnail_method', 20)->nullable();
-            $table->integer('thumbnail_width')->nullable();
-            $table->integer('thumbnail_height')->nullable();
-            $table->json('metadata')->nullable();
-            $table->unsignedBigInteger('image_geolocation_point_id')->nullable();
-            $table->string('debug_filename')->nullable();
-            $table->boolean('faces_checked')->default(false);
-            $table->string('status', 20)->default('process');
-            $table->text('last_error')->nullable();
-            $table->timestamp('created_at_file')->nullable();
-            $table->timestamp('updated_at_file')->nullable();
+            $table->string('thumbnail_method')->nullable();
+            $table->string('thumbnail_width')->nullable(); // varchar в MySQL
+            $table->string('thumbnail_height')->nullable(); // varchar в MySQL
             $table->timestamps();
-            $table->softDeletes();
+            $table->string('status')->default('process'); // enum в MySQL
+            $table->string('last_error')->nullable();
 
-            $table->unique(['disk', 'path', 'filename']);
+            $table->index(['disk', 'path', 'filename'], 'disk_path_filename_index');
+            $table->index('faces_checked', 'faces_checked_index');
+            $table->index('hash', 'hash_index');
+            $table->index('phash', 'phash_index');
         });
 
         // queues (дедупликация)
         Schema::create('queues', function ($table) {
             $table->id();
-            $table->binary('queue_key');
-            $table->string('queue_name', 100);
-            $table->string('job_class', 255);
-            $table->json('job_data')->nullable();
-            $table->timestamps();
+            $table->binary('queue_key'); // binary(16) = MD5
+            $table->timestamp('created_at')->useCurrent();
 
-            $table->index('queue_name');
+            $table->unique('queue_key', 'queues_queue_key_unique');
         });
 
         // faces
         Schema::create('faces', function ($table) {
             $table->id();
-            $table->unsignedBigInteger('image_id');
-            $table->integer('face_index')->default(0);
-            $table->binary('encoding')->nullable();
             $table->unsignedBigInteger('parent_id')->nullable();
-            $table->string('status', 20)->default('pending');
+            $table->unsignedBigInteger('image_id')->nullable();
+            $table->unsignedTinyInteger('face_index');
+            $table->string('name')->nullable();
+            $table->json('encoding')->nullable(); // JSON в MySQL
+            $table->string('status')->default('process'); // enum в MySQL
             $table->timestamps();
             $table->softDeletes();
+
+            $table->index('image_id', 'faces_image_id_foreign');
         });
 
         // image_geolocation_addresses
         Schema::create('image_geolocation_addresses', function ($table) {
             $table->id();
-            $table->bigInteger('osm_id')->nullable();
-            $table->json('address')->nullable();
-            $table->timestamps();
+            $table->bigInteger('osm_id');
+            // osm_area - POLYGON в MySQL, в SQLite просто текст
+            $table->text('osm_area')->nullable();
         });
 
         // image_geolocation_points
         Schema::create('image_geolocation_points', function ($table) {
             $table->id();
             $table->unsignedBigInteger('image_geolocation_address_id')->nullable();
-            $table->decimal('latitude', 10, 7)->nullable();
-            $table->decimal('longitude', 10, 7)->nullable();
-            $table->timestamps();
+            // coordinates - POINT в MySQL, в SQLite храним как текст
+            $table->text('coordinates');
         });
     }
 

@@ -29,6 +29,7 @@ IMAGE_PROCESSING_DRY_RUN=true php artisan images:process private images
 |--------|----------|
 | [Архитектура](architecture.md) | Структура системы и связи между компонентами |
 | [Конфигурация](configuration.md) | Настройка режимов обработки |
+| [База данных](database.md) | Структура таблиц и связи |
 | **Модули** | |
 | [Image](modules/image.md) | Хеши, размеры, поиск дубликатов |
 | [Thumbnail](modules/thumbnail.md) | Генерация миниатюр |

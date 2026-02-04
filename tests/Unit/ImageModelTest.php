@@ -39,13 +39,13 @@ class ImageModelTest extends TestCase
     {
         $this->createTestImage(['status' => 'process']);
         $this->createTestImage(['status' => 'process']);
-        $this->createTestImage(['status' => 'complete']);
+        $this->createTestImage(['status' => 'ok']);
 
         $processCount = Image::where('status', 'process')->count();
-        $completeCount = Image::where('status', 'complete')->count();
+        $okCount = Image::where('status', 'ok')->count();
 
         $this->assertEquals(2, $processCount);
-        $this->assertEquals(1, $completeCount);
+        $this->assertEquals(1, $okCount);
     }
 
     /** @test */
@@ -100,26 +100,8 @@ class ImageModelTest extends TestCase
     }
 
     // =========================================================================
-    // Unique constraint
+    // Unique constraint (index, not unique constraint)
     // =========================================================================
-
-    /** @test */
-    public function it_enforces_unique_disk_path_filename(): void
-    {
-        $this->createTestImage([
-            'disk' => 'private',
-            'path' => 'images/unique',
-            'filename' => 'photo.jpg',
-        ]);
-
-        $this->expectException(\Illuminate\Database\QueryException::class);
-
-        Image::create([
-            'disk' => 'private',
-            'path' => 'images/unique',
-            'filename' => 'photo.jpg',
-        ]);
-    }
 
     /** @test */
     public function it_allows_same_filename_in_different_paths(): void
@@ -141,11 +123,11 @@ class ImageModelTest extends TestCase
     }
 
     // =========================================================================
-    // Soft deletes
+    // Hard delete (Image не использует SoftDeletes)
     // =========================================================================
 
     /** @test */
-    public function it_soft_deletes_by_default(): void
+    public function it_hard_deletes(): void
     {
         $image = $this->createTestImage();
         $id = $image->id;
@@ -153,29 +135,6 @@ class ImageModelTest extends TestCase
         $image->delete();
 
         $this->assertNull(Image::find($id));
-        $this->assertNotNull(Image::withTrashed()->find($id));
-    }
-
-    /** @test */
-    public function it_can_be_restored(): void
-    {
-        $image = $this->createTestImage();
-        $id = $image->id;
-
-        $image->delete();
-        $image->restore();
-
-        $this->assertNotNull(Image::find($id));
-    }
-
-    /** @test */
-    public function it_can_be_force_deleted(): void
-    {
-        $image = $this->createTestImage();
-        $id = $image->id;
-
-        $image->forceDelete();
-
-        $this->assertNull(Image::withTrashed()->find($id));
+        $this->assertEquals(0, Image::count());
     }
 }

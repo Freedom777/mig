@@ -221,11 +221,11 @@ class ImageRepositoryTest extends TestCase
     }
 
     // =========================================================================
-    // Soft deletes
+    // Hard deletes (Image не использует SoftDeletes)
     // =========================================================================
 
     /** @test */
-    public function it_does_not_find_soft_deleted_images(): void
+    public function it_does_not_find_deleted_images(): void
     {
         $image = $this->createTestImage([
             'disk' => 'private',
@@ -233,7 +233,7 @@ class ImageRepositoryTest extends TestCase
             'filename' => 'deleted.jpg',
         ]);
 
-        $image->delete(); // Soft delete
+        $image->delete(); // Hard delete
 
         $exists = $this->repository->exists('private', 'images/test', 'deleted.jpg');
 
@@ -241,7 +241,7 @@ class ImageRepositoryTest extends TestCase
     }
 
     /** @test */
-    public function find_does_not_return_soft_deleted(): void
+    public function find_does_not_return_deleted(): void
     {
         $image = $this->createTestImage();
         $id = $image->id;

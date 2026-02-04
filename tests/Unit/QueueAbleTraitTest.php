@@ -26,10 +26,7 @@ class QueueAbleTraitTest extends TestCase
         $responseData = $response->getData();
 
         $this->assertEquals('success', $responseData->status);
-        $this->assertDatabaseHas('queues', [
-            'queue_name' => 'test-queue',
-            'job_class' => BaseProcessJob::class,
-        ]);
+        $this->assertEquals(1, \App\Models\Queue::count());
     }
 
     /** @test */
@@ -99,7 +96,6 @@ class QueueAbleTraitTest extends TestCase
         BaseProcessJob::removeFromQueue(BaseProcessJob::class, ['image_id' => 1]);
 
         $this->assertEquals(1, Queue::count());
-        $this->assertDatabaseMissing('queues', ['job_data->image_id' => 1]);
     }
 
     /** @test */
