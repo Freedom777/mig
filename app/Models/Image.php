@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Casts\HexCast;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -13,6 +14,15 @@ class Image extends Model
     public const STATUS_NOT_PHOTO = 'not_photo';
     public const STATUS_RECHECK = 'recheck';
     public const STATUS_OK = 'ok';
+
+    protected $casts = [
+        'metadata' => 'array',
+        'faces_checked' => 'boolean',
+        'created_at_file' => 'datetime',
+        'updated_at_file' => 'datetime',
+        'hash' => HexCast::class,
+        'phash' => HexCast::class,
+    ];
 
     protected $fillable = [
         'parent_id',
@@ -38,30 +48,6 @@ class Image extends Model
         'status',
         'last_error'
     ];
-
-    // ==========================================
-    // Mutators & Accessors
-    // ==========================================
-
-    public function setHashAttribute($value): void
-    {
-        $this->attributes['hash'] = hex2bin($value);
-    }
-
-    public function getHashAttribute($value): ?string
-    {
-        return $value ? bin2hex($value) : null;
-    }
-
-    public function setPhashAttribute($value): void
-    {
-        $this->attributes['phash'] = hex2bin($value);
-    }
-
-    public function getPhashAttribute($value): ?string
-    {
-        return $value ? bin2hex($value) : null;
-    }
 
     // ==========================================
     // Relationships

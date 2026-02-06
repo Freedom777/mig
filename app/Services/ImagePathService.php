@@ -109,4 +109,19 @@ class ImagePathService implements ImagePathServiceInterface
             $this->getThumbnailFilename($image->filename, $method, $width, $height)
         );
     }
+
+    /**
+     * Получить путь к существующему thumbnail (из полей модели)
+     * Возвращает null если thumbnail не сгенерирован
+     */
+    public function getExistingThumbnailPath(Image $image): ?string
+    {
+        if (!$image->thumbnail_path || !$image->thumbnail_filename) {
+            return null;
+        }
+
+        return Storage::disk($image->disk)->path(
+            $image->path . '/' . $image->thumbnail_path . '/' . $image->thumbnail_filename
+        );
+    }
 }

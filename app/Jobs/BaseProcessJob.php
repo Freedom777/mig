@@ -16,6 +16,10 @@ abstract class BaseProcessJob implements ShouldQueue
     protected array $taskData;
 
     public function __construct(array $taskData) {
+        if (!isset($taskData['image_id'])) {
+            throw new \InvalidArgumentException('taskData must contain image_id');
+        }
+
         $this->taskData = $taskData;
     }
 

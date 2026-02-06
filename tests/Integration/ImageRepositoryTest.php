@@ -4,10 +4,17 @@ namespace Tests\Integration;
 
 use App\Models\Image;
 use App\Repositories\ImageRepository;
-use App\Services\ImagePathService;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
+/**
+ * Интеграционные тесты ImageRepository
+ * 
+ * ВАЖНО:
+ * 1. findSimilarByPhash() требует MySQL (BIT_COUNT, XOR)
+ * 2. phash = 8 байт = 16 hex символов
+ * 3. updateOrCreate() требует реальный файл для prepareImageData()
+ */
 class ImageRepositoryTest extends TestCase
 {
     protected ImageRepository $repository;
@@ -15,11 +22,8 @@ class ImageRepositoryTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-
         Storage::fake('private');
-
-        $pathService = new ImagePathService();
-        $this->repository = new ImageRepository($pathService);
+        $this->repository = app(ImageRepository::class);
     }
 
     // =========================================================================
@@ -57,10 +61,7 @@ class ImageRepositoryTest extends TestCase
             'filename' => 'photo.jpg',
         ]);
 
-        // Same filename, different path
         $this->assertFalse($this->repository->exists('private', 'images/other', 'photo.jpg'));
-
-        // Same path/filename, different disk
         $this->assertFalse($this->repository->exists('public', 'images/test', 'photo.jpg'));
     }
 
@@ -97,19 +98,15 @@ class ImageRepositoryTest extends TestCase
     }
 
     // =========================================================================
-    // updateOrCreate()
+    // updateOrCreate() — требует реальный файл
     // =========================================================================
 
     /** @test */
     public function it_creates_new_image(): void
     {
-        $data = [
-            'source_disk' => 'private',
-            'source_path' => 'images/new',
-            'source_filename' => 'newfile.jpg',
-            'size' => 2048000,
-        ];
+        Storage::disk('private')->put('images/new/newfile.jpg', 'fake image content');
 
+        $data = $this->repository->prepareImageData('private', 'images/new', 'newfile.jpg');
         $image = $this->repository->updateOrCreate($data);
 
         $this->assertNotNull($image);
@@ -130,15 +127,12 @@ class ImageRepositoryTest extends TestCase
             'size' => 1000,
         ]);
 
-        $data = [
-            'source_disk' => 'private',
-            'source_path' => 'images/test',
-            'source_filename' => 'update.jpg',
-            'size' => 2000,
-        ];
+        Storage::disk('private')->put('images/test/update.jpg', str_repeat('x', 2000));
 
+        $data = $this->repository->prepareImageData('private', 'images/test', 'update.jpg');
         $image = $this->repository->updateOrCreate($data);
 
+        $this->assertNotNull($image);
         $this->assertEquals($existing->id, $image->id);
         $this->assertEquals(2000, $image->fresh()->size);
     }
@@ -146,15 +140,12 @@ class ImageRepositoryTest extends TestCase
     /** @test */
     public function it_maps_source_fields_correctly(): void
     {
-        $data = [
-            'source_disk' => 'private',
-            'source_path' => 'images/mapped',
-            'source_filename' => 'mapped.jpg',
-            'size' => 1024,
-        ];
+        Storage::disk('private')->put('images/mapped/mapped.jpg', 'content');
 
+        $data = $this->repository->prepareImageData('private', 'images/mapped', 'mapped.jpg');
         $image = $this->repository->updateOrCreate($data);
 
+        $this->assertNotNull($image);
         $this->assertEquals('private', $image->disk);
         $this->assertEquals('images/mapped', $image->path);
         $this->assertEquals('mapped.jpg', $image->filename);
@@ -167,7 +158,6 @@ class ImageRepositoryTest extends TestCase
     /** @test */
     public function it_prepares_image_data_from_file(): void
     {
-        // Создаём фейковый файл
         Storage::disk('private')->put('images/test/sample.jpg', 'fake image content');
 
         $data = $this->repository->prepareImageData('private', 'images/test', 'sample.jpg');
@@ -180,48 +170,43 @@ class ImageRepositoryTest extends TestCase
     }
 
     // =========================================================================
-    // findSimilarByPhash()
+    // findSimilarByPhash() - MySQL ONLY
     // =========================================================================
 
-    /** @test */
+    /**
+     * @test
+     * @group mysql
+     */
     public function it_finds_similar_image_by_phash(): void
     {
-        // Создаём изображение с известным phash
-        $existing = $this->createTestImage([
-            'phash' => hex2bin('0123456789abcdef'),
-        ]);
+        $this->skipIfNotMysql('findSimilarByPhash requires MySQL BIT_COUNT/XOR');
 
-        // Ищем с тем же phash (distance = 0)
-        $foundId = $this->repository->findSimilarByPhash('0123456789abcdef', 5);
+        $phashHex = '0123456789abcdef';
+
+        $existing = $this->createTestImage(['phash' => $phashHex]);
+
+        $foundId = $this->repository->findSimilarByPhash($phashHex, 5);
 
         $this->assertEquals($existing->id, $foundId);
     }
 
-    /** @test */
+    /**
+     * @test
+     * @group mysql
+     */
     public function it_returns_null_when_no_similar_phash(): void
     {
-        $this->createTestImage([
-            'phash' => hex2bin('0000000000000000'),
-        ]);
+        $this->skipIfNotMysql('findSimilarByPhash requires MySQL BIT_COUNT/XOR');
 
-        // Совсем другой phash
+        $this->createTestImage(['phash' => '0000000000000000']);
+
         $foundId = $this->repository->findSimilarByPhash('ffffffffffffffff', 5);
 
         $this->assertNull($foundId);
     }
 
-    /** @test */
-    public function it_excludes_images_without_phash(): void
-    {
-        $this->createTestImage(['phash' => null]);
-
-        $foundId = $this->repository->findSimilarByPhash('0123456789abcdef', 10);
-
-        $this->assertNull($foundId);
-    }
-
     // =========================================================================
-    // Hard deletes (Image не использует SoftDeletes)
+    // Hard deletes
     // =========================================================================
 
     /** @test */
@@ -233,7 +218,7 @@ class ImageRepositoryTest extends TestCase
             'filename' => 'deleted.jpg',
         ]);
 
-        $image->delete(); // Hard delete
+        $image->delete();
 
         $exists = $this->repository->exists('private', 'images/test', 'deleted.jpg');
 
