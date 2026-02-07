@@ -5,7 +5,7 @@ import time
 import logging
 import numpy as np
 import os
-from fastapi import FastAPI, File, UploadFile, Form
+from fastapi import FastAPI, File, UploadFile, Form, Query
 from fastapi.responses import JSONResponse
 from PIL import Image, ImageDraw, ImageFont
 from io import BytesIO
@@ -124,7 +124,6 @@ def save_debug_image(image_array, locations, original_path, image_debug_subdir):
 async def encode_faces(
     image: UploadFile = File(...),
     original_path: str = Form(...),
-    original_disk: str = Form(...),
     image_debug_subdir: str = Form("debug")
 ):
     start = time.time()
