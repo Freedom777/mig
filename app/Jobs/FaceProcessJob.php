@@ -49,10 +49,11 @@ class FaceProcessJob extends BaseProcessJob
         $image = Image::findOrFail($this->taskData['image_id']);
         $imagePath = $pathService->getImagePathByObj($image);
 
+        Log::info('original_path: ' . $imagePath);
+        Log::info('image_debug_subdir: ' . $pathService->getImageDebugSubdir());
         $response = Http::timeout(self::FACE_API_TIMEOUT)
             ->attach('image', file_get_contents($imagePath), $image->filename)
             ->post(config('image.face_api.url') . '/encode', [
-                'original_disk' => $image->disk,
                 'original_path' => $imagePath,
                 'image_debug_subdir' => $pathService->getImageDebugSubdir()
             ]);

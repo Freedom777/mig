@@ -3,7 +3,7 @@ import time
 import logging
 import numpy as np
 import os
-from fastapi import FastAPI, File, UploadFile, Form
+from fastapi import FastAPI, Query, File, UploadFile, Form
 from fastapi.responses import JSONResponse
 from PIL import Image, ImageDraw, ImageFont
 from io import BytesIO
@@ -90,14 +90,12 @@ def image_to_np_array(img):
     else:
         return image
 
-def save_debug_image(image_array, locations, original_disk, original_filename, image_debug_subdir):
-    original_path = os.path.normpath(original_filename)
-    relative_path = os.path.relpath(original_path, start=original_disk)
-    image_dir = os.path.dirname(relative_path)
-    debug_dir = os.path.join(original_disk, image_dir, image_debug_subdir)
+def save_debug_image(image_array, locations, original_path, image_debug_subdir):
+    image_dir = os.path.dirname(original_path)  # /var/www/html/storage/app/private/images
+    debug_dir = os.path.join(image_dir, image_debug_subdir)  # .../images/debug
     os.makedirs(debug_dir, exist_ok=True)
 
-    base_name = os.path.basename(original_filename)
+    base_name = os.path.basename(original_path)  # IMG_20251214_121206.jpg
     debug_path = os.path.join(debug_dir, f"debug_{base_name}")
 
     img = Image.fromarray(image_array)
@@ -114,7 +112,6 @@ def save_debug_image(image_array, locations, original_disk, original_filename, i
 async def encode_faces(
     image: UploadFile = File(...),
     original_path: str = Form(...),
-    original_disk: str = Form(...),
     image_debug_subdir: str = Form("debug")
 ):
     start = time.time()
@@ -155,7 +152,7 @@ async def encode_faces(
         # ✅ сохраняем дебаг всегда, даже когда лиц нет
         # debug_path = None
         # if locations:
-        debug_path = save_debug_image(image_np, locations, original_disk, original_path, image_debug_subdir)
+        debug_path = save_debug_image(image_np, locations, original_path, image_debug_subdir)
         logger.info(f"Saved debug image to {debug_path}")
 
         logger.info(f"Encoding took {round(time.time() - start, 2)} seconds")

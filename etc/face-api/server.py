@@ -102,29 +102,22 @@ def image_to_np_array(img):
 
     return image
 
-def save_debug_image(image_array, locations, original_disk, original_filename, image_debug_subdir):
-    original_path = os.path.normpath(original_filename)
-    relative_path = os.path.relpath(original_path, start=original_disk)
-    image_dir = os.path.dirname(relative_path)
-    debug_dir = os.path.join(original_disk, image_dir, image_debug_subdir)
+def save_debug_image(image_array, locations, original_path, image_debug_subdir):
+    image_dir = os.path.dirname(original_path)  # /var/www/html/storage/app/private/images
+    debug_dir = os.path.join(image_dir, image_debug_subdir)  # .../images/debug
     os.makedirs(debug_dir, exist_ok=True)
 
-    base_name = os.path.basename(original_filename)
+    base_name = os.path.basename(original_path)  # IMG_20251214_121206.jpg
     debug_path = os.path.join(debug_dir, f"debug_{base_name}")
 
     img = Image.fromarray(image_array)
     draw = ImageDraw.Draw(img)
-
-    try:
-        font = ImageFont.truetype("DejaVuSans.ttf", 30)
-    except:
-        font = ImageFont.load_default()
-
+    font = ImageFont.truetype("DejaVuSans.ttf", 30)
     for i, (top, right, bottom, left) in enumerate(locations):
         draw.rectangle([(left, top), (right, bottom)], outline="green", width=3)
         draw.text((left + 5, bottom - 40), f"Face {i}", fill="red", font=font)
-
     img.save(debug_path, quality=90)
+
     return debug_path
 
 @app.post("/encode")
@@ -169,7 +162,7 @@ async def encode_faces(
             logger.info(f"Generated {len(encodings)} encodings")
 
         debug_path = save_debug_image(
-            image_np, locations, original_disk, original_path, image_debug_subdir
+            image_np, locations, original_path, image_debug_subdir
         )
         logger.info(f"Debug image saved: {debug_path}")
 

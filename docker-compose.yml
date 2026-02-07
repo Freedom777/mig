@@ -20,7 +20,7 @@ services:
 
     face-api:
         build:
-            context: ./docker/face-api      # Путь к Dockerfile для face_api
+            context: ./etc/docker/face-api      # Путь к Dockerfile для face_api
             dockerfile: Dockerfile
             args:
                 WWWUSER: "${WWWUSER:-1000}"       # UID пользователя внутри контейнера
@@ -40,10 +40,11 @@ services:
             - "5000:5000"                   # Открытый порт для REST API face_recognition
         volumes:
             - "/mnt/d/Fotos:/dfotos"
+            - "./storage/app:/var/www/html/storage/app"
 
     laravel.test:
         build:
-            context: ./docker/8.4       # Путь к кастомному Dockerfile с PHP 8.4 и imagick
+            context: ./etc/docker/8.4       # Путь к кастомному Dockerfile с PHP 8.4 и imagick
             args:
                 WWWUSER: "${WWWUSER:-1000}"       # UID пользователя внутри контейнера
                 WWWGROUP: "${WWWGROUP:-1000}"     # GID группы внутри контейнера
@@ -88,7 +89,7 @@ services:
             MYSQL_ALLOW_EMPTY_PASSWORD: 1
         volumes:
             - sail-mysql:/var/lib/mysql
-            - ./docker/mysql/create-testing-database.sh:/docker-entrypoint-initdb.d/10-create-testing-database.sh
+            - ./etc/docker/mysql/create-testing-database.sh:/docker-entrypoint-initdb.d/10-create-testing-database.sh
         networks:
             - sail
         healthcheck:
@@ -105,7 +106,7 @@ services:
         networks:
             - sail
         ports:
-            - 8090:80
+            - "8090:80"
         environment:
             PMA_HOST: mysql
             PMA_PORT: 3306

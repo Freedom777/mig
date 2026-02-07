@@ -133,6 +133,8 @@ class ApiImageActionController extends Controller
      */
     public function newUpload(Request $request): JsonResponse
     {
+        // dd(config('image.processing.debug'));
+
         $filename = $request->input('filename');
 
         if (!$filename) {

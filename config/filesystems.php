@@ -37,7 +37,7 @@ return [
             'throw' => false,
             'report' => false,
             'visibility' => 'private',
-            'directory_visibility' => 'public', // ← или удалите эту строку
+            // 'directory_visibility' => 'public', // ← или удалите эту строку
         ],
 
         'dfotos' => [
