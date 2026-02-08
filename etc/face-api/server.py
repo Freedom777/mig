@@ -1,5 +1,5 @@
 import imagehash
-from fastapi import Query  # для hash_size параметра
+import cv2
 import sys
 import time
 import logging
@@ -120,6 +120,38 @@ def save_debug_image(image_array, locations, original_path, image_debug_subdir):
 
     return debug_path
 
+def calculate_face_quality(image_np, location):
+    """Оценка качества лица 0-100"""
+    top, right, bottom, left = location
+    face_img = image_np[top:bottom, left:right]
+
+    scores = {}
+
+    # 1. Размер лица (больше = лучше)
+    face_size = (bottom - top) * (right - left)
+    scores['size'] = min(face_size / 10000, 1.0) * 25  # max 25
+
+    # 2. Резкость (Laplacian variance)
+    gray = cv2.cvtColor(face_img, cv2.COLOR_RGB2GRAY)
+    laplacian_var = cv2.Laplacian(gray, cv2.CV_64F).var()
+    scores['sharpness'] = min(laplacian_var / 500, 1.0) * 35  # max 35
+
+    # 3. Яркость (не слишком тёмное/светлое)
+    brightness = gray.mean()
+    brightness_score = 1.0 - abs(brightness - 127) / 127
+    scores['brightness'] = brightness_score * 20  # max 20
+
+    # 4. Контраст
+    contrast = gray.std()
+    scores['contrast'] = min(contrast / 50, 1.0) * 20  # max 20
+
+    total = sum(scores.values())
+
+    return {
+        'total': round(total, 1),
+        'details': {k: round(v, 1) for k, v in scores.items()}
+    }
+
 @app.post("/encode")
 async def encode_faces(
     image: UploadFile = File(...),
@@ -170,6 +202,7 @@ async def encode_faces(
 
         return JSONResponse(content={
             "encodings": [e.tolist() for e in encodings],
+            "qualities": [calculate_face_quality(image_np, loc) for loc in locations],
             "debug_image_path": debug_path,
         })
 

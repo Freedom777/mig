@@ -74,6 +74,7 @@ class FaceProcessJob extends BaseProcessJob
 
         $image->update(['last_error' => null]);
         $newEncodings = $responseData['encodings'] ?? [];
+        $qualities = $responseData['qualities'] ?? [];
 
         // Оптимизация: сравниваем только с "мастер" записями
         $faces = Face::query()
@@ -85,10 +86,14 @@ class FaceProcessJob extends BaseProcessJob
         $threshold = config('image.face_api.threshold', 0.6);
 
         foreach ($newEncodings as $idx => $newEncoding) {
+            $quality = $qualities[$idx] ?? null;
+
             $newFace = new Face();
             $newFace->encoding = $newEncoding;
             $newFace->image_id = $image->id;
             $newFace->face_index = $idx;
+            $newFace->quality_score = $quality['total'] ?? null;
+            $newFace->quality_details = $quality['details'] ?? null;
 
             if ($faces->isNotEmpty()) {
                 $parentId = $this->findMatchingFace($newEncoding, $faces, $threshold);

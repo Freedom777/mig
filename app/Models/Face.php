@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Face extends Model
@@ -16,6 +17,8 @@ class Face extends Model
 
     protected $casts = [
         'encoding' => 'array',
+        'quality_details' => 'array',
+        'is_reference' => 'boolean',
     ];
 
     protected $fillable = [
@@ -23,6 +26,10 @@ class Face extends Model
         'face_index',
         'name',
         'encoding',
+        'person_id',
+        'quality_score',
+        'quality_details',
+        'is_reference',
         'status',
     ];
 
@@ -39,5 +46,10 @@ class Face extends Model
     public function parent()
     {
         return $this->belongsTo(Face::class, 'parent_id');
+    }
+
+    public function person(): BelongsTo
+    {
+        return $this->belongsTo(Person::class);
     }
 }
