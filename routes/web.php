@@ -21,7 +21,7 @@ Route::get('dashboard', function () {
 })->middleware(['auth', 'verified'])->name('dashboard');
 
 Route::get('/images', [ImageController::class, 'index'])->middleware(['auth', 'verified'])->name('images.index');
-Route::get('/photos', [PhotoController::class, 'index'])->middleware(['auth', 'verified'])->name('photos.index');
+Route::get('/photos', [PhotoController::class, 'index'])->name('photos.index');
 
 Route::get('/images/{image}.jpg', [ApiImageActionController::class, 'show']);
 Route::get('/thumbnails/{image}.jpg', [ApiImageActionController::class, 'showThumbnail']);
