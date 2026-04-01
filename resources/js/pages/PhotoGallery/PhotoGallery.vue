@@ -1,9 +1,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { usePage } from '@inertiajs/vue3'
-import AppLayout from '@/layouts/AppLayout.vue'
 import PhotoGalleryHeader from './PhotoGalleryHeader.vue'
-import FiltersSidebar from './FiltersSidebar.vue'
 import PhotoGrid from './PhotoGrid.vue'
 import axios from 'axios'
 
@@ -15,8 +13,7 @@ const isAuthenticated = computed(() => !!page.props.auth?.user)
 const filters = ref({
     people: [],
     cities: [],
-    tags: [],
-    dateRange: [2000, new Date().getFullYear()]
+    tags: []
 })
 
 const selectedFilters = ref({
@@ -103,39 +100,30 @@ const loadMorePhotos = () => {
 }
 
 onMounted(async () => {
-    if (isAuthenticated.value) {
-        await fetchFilters()
-    }
+    // Фильтры загружаем для всех (и залогиненных, и незалогиненных)
+    await fetchFilters()
     await fetchPhotos(1)
 })
 </script>
 
 <template>
-    <!-- Для залогиненных пользователей - используем AppLayout с sidebar -->
+    <!-- Для залогиненных пользователей - AppLayout с sidebar -->
     <template v-if="isAuthenticated">
         <AppShell variant="sidebar">
             <AppSidebar />
             <AppContent variant="sidebar">
-                <!-- Кастомный header с фильтрами вместо стандартного AppSidebarHeader -->
+                <!-- Header с фильтрами -->
                 <PhotoGalleryHeader
                     :selected-filters="selectedFilters"
+                    :filters="filters"
+                    :show-sidebar-toggle="true"
                     @update:selected-filters="selectedFilters = $event"
                     @filters-changed="onFiltersChanged"
                 />
                 
-                <!-- Основной контент: sidebar + grid -->
-                <div class="flex flex-1">
-                    <!-- Sidebar с селекторами фильтров -->
-                    <FiltersSidebar
-                        class="filters-sidebar"
-                        :filters="filters"
-                        v-model:selectedFilters="selectedFilters"
-                        @filters-changed="onFiltersChanged"
-                    />
-                    
-                    <!-- Сетка фотографий -->
+                <!-- Сетка фотографий на всю ширину -->
+                <div class="photo-content">
                     <PhotoGrid
-                        class="photo-grid-authenticated"
                         :photos="photos"
                         :on-load-more="loadMorePhotos"
                     />
@@ -144,26 +132,29 @@ onMounted(async () => {
         </AppShell>
     </template>
 
-    <!-- Для незалогиненных пользователей - простой контент без layout -->
+    <!-- Для незалогиненных пользователей - простой layout -->
     <div v-else class="photo-gallery-public min-h-screen">
-        <!-- Только date range в простом header -->
+        <!-- Header с фильтрами (БЕЗ кнопки toggle sidebar) -->
         <PhotoGalleryHeader
             :selected-filters="selectedFilters"
+            :filters="filters"
+            :show-sidebar-toggle="false"
             @update:selected-filters="selectedFilters = $event"
             @filters-changed="onFiltersChanged"
         />
         
         <!-- Сетка фотографий на всю ширину -->
-        <PhotoGrid
-            class="photo-grid-public"
-            :photos="photos"
-            :on-load-more="loadMorePhotos"
-        />
+        <div class="photo-content-public">
+            <PhotoGrid
+                :photos="photos"
+                :on-load-more="loadMorePhotos"
+            />
+        </div>
     </div>
 </template>
 
 <script>
-// Импорты для AppShell и AppContent (если они не в setup)
+// Импорты компонентов layout
 import AppShell from '@/components/AppShell.vue'
 import AppSidebar from '@/components/AppSidebar.vue'
 import AppContent from '@/components/AppContent.vue'
@@ -178,45 +169,24 @@ export default {
 </script>
 
 <style scoped>
-.filters-sidebar {
-    width: 280px;
-    flex-shrink: 0;
-    border-right: 1px solid hsl(var(--border));
-    background: hsl(var(--muted) / 0.3);
-}
-
-.photo-grid-authenticated {
-    flex: 1;
+.photo-content {
     padding: 1.5rem;
 }
 
-/* Публичная галерея */
 .photo-gallery-public {
     background: hsl(var(--background));
 }
 
-.photo-grid-public {
+.photo-content-public {
     padding: 1.5rem;
     max-width: 1600px;
     margin: 0 auto;
 }
 
 /* Responsive */
-@media (max-width: 1024px) {
-    .filters-sidebar {
-        width: 240px;
-    }
-}
-
 @media (max-width: 768px) {
-    .filters-sidebar {
-        width: 100%;
-        border-right: none;
-        border-bottom: 1px solid hsl(var(--border));
-    }
-    
-    .photo-grid-authenticated,
-    .photo-grid-public {
+    .photo-content,
+    .photo-content-public {
         padding: 1rem;
     }
 }

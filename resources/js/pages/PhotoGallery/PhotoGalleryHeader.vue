@@ -2,20 +2,35 @@
 import { ref, computed, onMounted, watch, onUnmounted } from 'vue'
 import { SidebarTrigger } from '@/components/ui/sidebar'
 import VueSlider from 'vue-3-slider-component'
+import PeopleFilter from './Filters/PeopleFilter.vue'
+import CityFilter from './Filters/CityFilter.vue'
+import TagsFilter from './Filters/TagsFilter.vue'
 import axios from 'axios'
 
 const props = defineProps({
     selectedFilters: {
         type: Object,
         required: true
+    },
+    filters: {
+        type: Object,
+        required: true
+    },
+    showSidebarToggle: {
+        type: Boolean,
+        default: false
     }
 })
 
 const emit = defineEmits(['update:selectedFilters', 'filters-changed'])
 
+// Dropdown states
+const showPeopleDropdown = ref(false)
+const showCitiesDropdown = ref(false)
+const showTagsDropdown = ref(false)
+
 // Mobile detection
 const isMobileView = ref(false)
-const showFiltersModal = ref(false)
 
 const checkMobile = () => {
     isMobileView.value = window.innerWidth < 768
@@ -24,11 +39,54 @@ const checkMobile = () => {
 onMounted(() => {
     checkMobile()
     window.addEventListener('resize', checkMobile)
+    document.addEventListener('click', handleClickOutside)
 })
 
 onUnmounted(() => {
     window.removeEventListener('resize', checkMobile)
+    document.removeEventListener('click', handleClickOutside)
 })
+
+// Refs для dropdown контейнеров
+const peopleDropdownRef = ref(null)
+const citiesDropdownRef = ref(null)
+const tagsDropdownRef = ref(null)
+
+const handleClickOutside = (event) => {
+    // Закрываем dropdown если клик вне их
+    if (peopleDropdownRef.value && !peopleDropdownRef.value.contains(event.target)) {
+        showPeopleDropdown.value = false
+    }
+    if (citiesDropdownRef.value && !citiesDropdownRef.value.contains(event.target)) {
+        showCitiesDropdown.value = false
+    }
+    if (tagsDropdownRef.value && !tagsDropdownRef.value.contains(event.target)) {
+        showTagsDropdown.value = false
+    }
+}
+
+const toggleDropdown = (dropdown) => {
+    if (dropdown === 'people') {
+        showPeopleDropdown.value = !showPeopleDropdown.value
+        showCitiesDropdown.value = false
+        showTagsDropdown.value = false
+    } else if (dropdown === 'cities') {
+        showCitiesDropdown.value = !showCitiesDropdown.value
+        showPeopleDropdown.value = false
+        showTagsDropdown.value = false
+    } else if (dropdown === 'tags') {
+        showTagsDropdown.value = !showTagsDropdown.value
+        showPeopleDropdown.value = false
+        showCitiesDropdown.value = false
+    }
+}
+
+// Update filter wrapper
+const updateFilter = (key, value) => {
+    const updated = { ...props.selectedFilters, [key]: value }
+    emit('update:selectedFilters', updated)
+    emit('filters-changed')
+}
 
 // Date range slider
 const availableDates = ref([])
@@ -48,7 +106,6 @@ const loadAvailableDates = async () => {
     }
 }
 
-// Маркеры для desktop слайдера (каждый 3-й месяц)
 const dateMarks = computed(() => {
     if (!availableDates.value.length) return {}
 
@@ -63,12 +120,10 @@ const dateMarks = computed(() => {
     return marks
 })
 
-// Ширина слайдера в зависимости от экрана
 const sliderWidth = computed(() => {
     return isMobileView.value ? '150px' : '280px'
 })
 
-// Отображение текущего диапазона
 const displayRange = computed(() => {
     if (!availableDates.value.length || !localRange.value) return ''
 
@@ -88,7 +143,6 @@ const displayRange = computed(() => {
     return `${formatDate(startDate)} — ${formatDate(endDate)}`
 })
 
-// Форматирование тултипа
 const formatTooltip = (index) => {
     if (!availableDates.value[index]) return ''
     const [year, month] = availableDates.value[index].split('-')
@@ -96,7 +150,6 @@ const formatTooltip = (index) => {
     return `${monthName} ${year}`
 }
 
-// Обновление диапазона дат
 const updateDateRange = (val) => {
     if (!availableDates.value.length) return
 
@@ -108,7 +161,6 @@ const updateDateRange = (val) => {
     emit('filters-changed')
 }
 
-// Следим за изменениями dateRange извне
 watch(() => props.selectedFilters.dateRange, (newValue) => {
     if (!availableDates.value.length || !newValue || !newValue[0]) return
 
@@ -120,77 +172,17 @@ watch(() => props.selectedFilters.dateRange, (newValue) => {
     }
 }, { deep: true })
 
-// Список активных фильтров для отображения
-const activeFiltersList = computed(() => {
-    const filters = []
-
-    // People (объекты с id и name)
-    if (props.selectedFilters.people?.length) {
-        props.selectedFilters.people.forEach(person => {
-            filters.push({
-                key: `people-${person.id}`,
-                label: person.name,
-                type: 'people',
-                value: person
-            })
-        })
-    }
-
-    // Cities (строки)
-    if (props.selectedFilters.cities?.length) {
-        props.selectedFilters.cities.forEach(city => {
-            filters.push({
-                key: `cities-${city}`,
-                label: city,
-                type: 'cities',
-                value: city
-            })
-        })
-    }
-
-    // Tags (строки)
-    if (props.selectedFilters.tags?.length) {
-        props.selectedFilters.tags.forEach(tag => {
-            filters.push({
-                key: `tags-${tag}`,
-                label: tag,
-                type: 'tags',
-                value: tag
-            })
-        })
-    }
-
-    return filters
-})
-
+// Активные фильтры
 const hasActiveFilters = computed(() => {
-    // Проверяем чипы фильтров
-    const hasChips = activeFiltersList.value.length > 0
-
-    // Проверяем dateRange - активен если не полный диапазон
-    const hasDateFilter = localRange.value[0] !== 0 ||
-        localRange.value[1] !== (availableDates.value.length - 1)
-
+    const hasChips = props.selectedFilters.people?.length > 0 || 
+                     props.selectedFilters.cities?.length > 0 || 
+                     props.selectedFilters.tags?.length > 0
+    
+    const hasDateFilter = localRange.value[0] !== 0 || 
+                          localRange.value[1] !== (availableDates.value.length - 1)
+    
     return hasChips || hasDateFilter
 })
-
-const activeFiltersCount = computed(() => activeFiltersList.value.length)
-
-// Удаление фильтра
-const removeFilter = (filter) => {
-    const updated = { ...props.selectedFilters }
-
-    if (filter.type === 'people') {
-        updated.people = updated.people.filter(p => p.id !== filter.value.id)
-    } else if (filter.type === 'cities') {
-        updated.cities = updated.cities.filter(c => c !== filter.value)
-    } else if (filter.type === 'tags') {
-        updated.tags = updated.tags.filter(t => t !== filter.value)
-    }
-
-    emit('update:selectedFilters', updated)
-    emit('filters-changed')
-}
 
 // Очистить все фильтры
 const clearAllFilters = () => {
@@ -198,12 +190,11 @@ const clearAllFilters = () => {
         people: [],
         cities: [],
         tags: [],
-        dateRange: [] // Сбрасываем dateRange
+        dateRange: []
     }
     emit('update:selectedFilters', updated)
     emit('filters-changed')
 
-    // Сбрасываем слайдер на полный диапазон
     if (availableDates.value.length > 0) {
         localRange.value = [0, availableDates.value.length - 1]
     }
@@ -216,52 +207,97 @@ onMounted(loadAvailableDates)
     <header
         class="flex h-16 shrink-0 items-center gap-2 border-b border-sidebar-border/70 px-6 transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-12 md:px-4"
     >
-        <!-- Левая часть: SidebarTrigger + активные фильтры -->
+        <!-- Левая часть: Toggle + Фильтры -->
         <div class="flex items-center gap-3 flex-1 min-w-0">
-            <SidebarTrigger class="-ml-1" />
+            <!-- SidebarTrigger только для залогиненных -->
+            <SidebarTrigger v-if="showSidebarToggle" class="-ml-1" />
 
-            <!-- Кнопка "Сбросить всё" если есть активные фильтры -->
+            <!-- Кнопка "Сбросить всё" -->
             <button
                 v-if="hasActiveFilters"
                 @click="clearAllFilters"
-                class="text-xs text-muted-foreground hover:text-foreground underline"
+                class="text-xs text-muted-foreground hover:text-foreground underline transition-colors whitespace-nowrap"
             >
                 Сбросить всё
             </button>
 
-            <!-- Desktop: активные фильтры чипами -->
-            <div v-if="hasActiveFilters && !isMobileView" class="flex flex-wrap gap-2 items-center">
-                <span
-                    v-for="filter in activeFiltersList"
-                    :key="filter.key"
-                    class="inline-flex items-center gap-1.5 px-2.5 py-1 bg-gradient-to-r from-violet-600 to-purple-600 text-white rounded-full text-xs font-medium"
-                >
-                    {{ filter.label }}
+            <!-- Dropdown фильтры -->
+            <div class="flex items-center gap-2 flex-wrap">
+                <!-- People Filter Dropdown -->
+                <div class="relative" ref="peopleDropdownRef">
                     <button
-                        @click="removeFilter(filter)"
-                        class="flex items-center justify-center w-4 h-4 ml-0.5 bg-white/20 hover:bg-white/30 rounded-full text-white text-sm leading-none transition-colors"
+                        @click.stop="toggleDropdown('people')"
+                        class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-colors"
+                        :class="props.selectedFilters.people?.length > 0 
+                            ? 'bg-gradient-to-r from-violet-600 to-purple-600 text-white' 
+                            : 'bg-muted text-muted-foreground hover:bg-muted/80'"
                     >
-                        ×
+                        Имена
+                        <span v-if="props.selectedFilters.people?.length > 0" class="ml-0.5">({{ props.selectedFilters.people.length }})</span>
+                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                        </svg>
                     </button>
-                </span>
+                    
+                    <div v-if="showPeopleDropdown" class="dropdown-menu">
+                        <PeopleFilter
+                            :people="filters.people"
+                            :model-value="selectedFilters.people"
+                            @update:model-value="val => updateFilter('people', val)"
+                        />
+                    </div>
+                </div>
+
+                <!-- Cities Filter Dropdown -->
+                <div class="relative" ref="citiesDropdownRef">
+                    <button
+                        @click.stop="toggleDropdown('cities')"
+                        class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-colors"
+                        :class="props.selectedFilters.cities?.length > 0 
+                            ? 'bg-gradient-to-r from-violet-600 to-purple-600 text-white' 
+                            : 'bg-muted text-muted-foreground hover:bg-muted/80'"
+                    >
+                        Города
+                        <span v-if="props.selectedFilters.cities?.length > 0" class="ml-0.5">({{ props.selectedFilters.cities.length }})</span>
+                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                        </svg>
+                    </button>
+                    
+                    <div v-if="showCitiesDropdown" class="dropdown-menu">
+                        <CityFilter
+                            :cities="filters.cities"
+                            :model-value="selectedFilters.cities"
+                            @update:model-value="val => updateFilter('cities', val)"
+                        />
+                    </div>
+                </div>
+
+                <!-- Tags Filter Dropdown -->
+                <div class="relative" ref="tagsDropdownRef">
+                    <button
+                        @click.stop="toggleDropdown('tags')"
+                        class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-colors"
+                        :class="props.selectedFilters.tags?.length > 0 
+                            ? 'bg-gradient-to-r from-violet-600 to-purple-600 text-white' 
+                            : 'bg-muted text-muted-foreground hover:bg-muted/80'"
+                    >
+                        Тэги
+                        <span v-if="props.selectedFilters.tags?.length > 0" class="ml-0.5">({{ props.selectedFilters.tags.length }})</span>
+                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                        </svg>
+                    </button>
+                    
+                    <div v-if="showTagsDropdown" class="dropdown-menu">
+                        <TagsFilter
+                            :tags="filters.tags"
+                            :model-value="selectedFilters.tags"
+                            @update:model-value="val => updateFilter('tags', val)"
+                        />
+                    </div>
+                </div>
             </div>
-
-            <!-- Mobile: кнопка "Фильтры" с счётчиком -->
-            <button
-                v-if="isMobileView && hasActiveFilters"
-                @click="showFiltersModal = true"
-                class="inline-flex items-center gap-2 px-3 py-1.5 bg-gradient-to-r from-violet-600 to-purple-600 text-white rounded-md text-xs font-medium"
-            >
-                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon>
-                </svg>
-                Фильтры ({{ activeFiltersCount }})
-            </button>
-
-            <!-- Если нет активных фильтров -->
-            <span v-if="!hasActiveFilters && !isMobileView" class="text-sm text-muted-foreground italic">
-                Все фотографии
-            </span>
         </div>
 
         <!-- Правая часть: date range slider -->
@@ -288,35 +324,6 @@ onMounted(loadAvailableDates)
                 />
             </div>
         </div>
-
-        <!-- Mobile: Modal с фильтрами -->
-        <Teleport to="body">
-            <div v-if="showFiltersModal && isMobileView" class="fixed inset-0 bg-black/50 flex items-end justify-center z-50" @click="showFiltersModal = false">
-                <div class="bg-background rounded-t-2xl w-full max-h-[70vh] overflow-y-auto" @click.stop>
-                    <div class="flex items-center justify-between p-4 border-b border-border">
-                        <h3 class="text-lg font-semibold">Активные фильтры</h3>
-                        <button @click="showFiltersModal = false" class="w-8 h-8 flex items-center justify-center text-2xl text-muted-foreground">
-                            ×
-                        </button>
-                    </div>
-                    <div class="p-4 space-y-2">
-                        <div
-                            v-for="filter in activeFiltersList"
-                            :key="filter.key"
-                            class="flex items-center justify-between p-3 bg-muted rounded-lg"
-                        >
-                            <span class="text-sm">{{ filter.label }}</span>
-                            <button
-                                @click="removeFilter(filter)"
-                                class="w-7 h-7 flex items-center justify-center bg-destructive text-destructive-foreground rounded-full text-lg"
-                            >
-                                ×
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </Teleport>
     </header>
 </template>
 
@@ -324,6 +331,23 @@ onMounted(loadAvailableDates)
 .slider-container {
     display: flex;
     align-items: center;
+}
+
+/* Dropdown menu */
+.dropdown-menu {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    margin-top: 0.5rem;
+    background: hsl(var(--popover));
+    border: 1px solid hsl(var(--border));
+    border-radius: 0.5rem;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    z-index: 50;
+    min-width: 250px;
+    max-height: 400px;
+    overflow-y: auto;
+    padding: 0.5rem;
 }
 
 /* Стилизация слайдера для тёмной темы */
