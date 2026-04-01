@@ -2,7 +2,6 @@
 import PeopleFilter from './Filters/PeopleFilter.vue'
 import CitiesFilter from './Filters/CityFilter.vue'
 import TagsFilter from './Filters/TagsFilter.vue'
-import DateFilter from './Filters/DateFilter.vue'
 
 const props = defineProps({
     filters: {
@@ -45,12 +44,6 @@ const updateFilter = (key, value) => {
                 :tags="filters.tags"
                 :model-value="selectedFilters.tags"
                 @update:model-value="val => updateFilter('tags', val)"
-            />
-
-            <DateFilter
-                :model-value="selectedFilters.dateRange"
-                @update:model-value="val => updateFilter('dateRange', val)"
-                @change="$emit('filters-changed')"
             />
         </div>
     </div>

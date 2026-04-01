@@ -1,9 +1,16 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
+import { usePage } from '@inertiajs/vue3'
 import AppLayout from '@/layouts/AppLayout.vue'
+import PhotoGalleryHeader from './PhotoGalleryHeader.vue'
 import FiltersSidebar from './FiltersSidebar.vue'
 import PhotoGrid from './PhotoGrid.vue'
 import axios from 'axios'
+
+const page = usePage()
+
+// Проверка авторизации
+const isAuthenticated = computed(() => !!page.props.auth?.user)
 
 const filters = ref({
     people: [],
@@ -96,25 +103,121 @@ const loadMorePhotos = () => {
 }
 
 onMounted(async () => {
-    await fetchFilters()
+    if (isAuthenticated.value) {
+        await fetchFilters()
+    }
     await fetchPhotos(1)
 })
 </script>
 
 <template>
-    <AppLayout title="Photo Gallery">
-        <div class="flex min-h-screen">
-            <FiltersSidebar
-                class="w-1/4"
-                :filters="filters"
-                v-model:selectedFilters="selectedFilters"
-                @filters-changed="onFiltersChanged"
-            />
-            <PhotoGrid
-                class="w-3/4"
-                :photos="photos"
-                :on-load-more="loadMorePhotos"
-            />
-        </div>
-    </AppLayout>
+    <!-- Для залогиненных пользователей - используем AppLayout с sidebar -->
+    <template v-if="isAuthenticated">
+        <AppShell variant="sidebar">
+            <AppSidebar />
+            <AppContent variant="sidebar">
+                <!-- Кастомный header с фильтрами вместо стандартного AppSidebarHeader -->
+                <PhotoGalleryHeader
+                    :selected-filters="selectedFilters"
+                    @update:selected-filters="selectedFilters = $event"
+                    @filters-changed="onFiltersChanged"
+                />
+                
+                <!-- Основной контент: sidebar + grid -->
+                <div class="flex flex-1">
+                    <!-- Sidebar с селекторами фильтров -->
+                    <FiltersSidebar
+                        class="filters-sidebar"
+                        :filters="filters"
+                        v-model:selectedFilters="selectedFilters"
+                        @filters-changed="onFiltersChanged"
+                    />
+                    
+                    <!-- Сетка фотографий -->
+                    <PhotoGrid
+                        class="photo-grid-authenticated"
+                        :photos="photos"
+                        :on-load-more="loadMorePhotos"
+                    />
+                </div>
+            </AppContent>
+        </AppShell>
+    </template>
+
+    <!-- Для незалогиненных пользователей - простой контент без layout -->
+    <div v-else class="photo-gallery-public min-h-screen">
+        <!-- Только date range в простом header -->
+        <PhotoGalleryHeader
+            :selected-filters="selectedFilters"
+            @update:selected-filters="selectedFilters = $event"
+            @filters-changed="onFiltersChanged"
+        />
+        
+        <!-- Сетка фотографий на всю ширину -->
+        <PhotoGrid
+            class="photo-grid-public"
+            :photos="photos"
+            :on-load-more="loadMorePhotos"
+        />
+    </div>
 </template>
+
+<script>
+// Импорты для AppShell и AppContent (если они не в setup)
+import AppShell from '@/components/AppShell.vue'
+import AppSidebar from '@/components/AppSidebar.vue'
+import AppContent from '@/components/AppContent.vue'
+
+export default {
+    components: {
+        AppShell,
+        AppSidebar,
+        AppContent
+    }
+}
+</script>
+
+<style scoped>
+.filters-sidebar {
+    width: 280px;
+    flex-shrink: 0;
+    border-right: 1px solid hsl(var(--border));
+    background: hsl(var(--muted) / 0.3);
+}
+
+.photo-grid-authenticated {
+    flex: 1;
+    padding: 1.5rem;
+}
+
+/* Публичная галерея */
+.photo-gallery-public {
+    background: hsl(var(--background));
+}
+
+.photo-grid-public {
+    padding: 1.5rem;
+    max-width: 1600px;
+    margin: 0 auto;
+}
+
+/* Responsive */
+@media (max-width: 1024px) {
+    .filters-sidebar {
+        width: 240px;
+    }
+}
+
+@media (max-width: 768px) {
+    .filters-sidebar {
+        width: 100%;
+        border-right: none;
+        border-bottom: 1px solid hsl(var(--border));
+    }
+    
+    .photo-grid-authenticated,
+    .photo-grid-public {
+        padding: 1rem;
+    }
+}
+</style>
