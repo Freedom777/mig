@@ -163,7 +163,17 @@ const activeFiltersList = computed(() => {
     return filters
 })
 
-const hasActiveFilters = computed(() => activeFiltersList.value.length > 0)
+const hasActiveFilters = computed(() => {
+    // Проверяем чипы фильтров
+    const hasChips = activeFiltersList.value.length > 0
+
+    // Проверяем dateRange - активен если не полный диапазон
+    const hasDateFilter = localRange.value[0] !== 0 ||
+        localRange.value[1] !== (availableDates.value.length - 1)
+
+    return hasChips || hasDateFilter
+})
+
 const activeFiltersCount = computed(() => activeFiltersList.value.length)
 
 // Удаление фильтра
