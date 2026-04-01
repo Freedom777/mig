@@ -13,13 +13,19 @@ class ImagesCheck extends Command
 
     protected $description = 'Checking images, debug image files and thumbnails presence in DB and filesystem.';
 
+    public function __construct(
+        protected ImagePathService $imagePathService
+    ) {
+        parent::__construct();
+    }
+
     public function handle()
     {
         $images = Image::all();
 
         foreach ($images as $image) {
             $imagePath = $image->filename
-                ? ImagePathService::getImagePathByObj($image)
+                ? $this->imagePathService->getImagePathByObj($image)
                 : null;
 
             if (!$imagePath || !is_file($imagePath)) {
@@ -32,7 +38,7 @@ class ImagesCheck extends Command
 
             // Some images very big (PANO_...), so debug image will be not created
             $debugImagePath = $image->debug_filename
-                ? ImagePathService::getDebugImagePath($image)
+                ? $this->imagePathService->getDebugImagePath($image)
                 : null;
 
             if (!$debugImagePath || !is_file($debugImagePath)) {
@@ -44,7 +50,7 @@ class ImagesCheck extends Command
             }
 
             $thumbnailPath = $image->thumbnail_filename
-                ? ImagePathService::getDefaultThumbnailPath($image)
+                ? $this->imagePathService->getDefaultThumbnailPath($image)
                 : null;
 
             if (!$thumbnailPath || !is_file($thumbnailPath)) {

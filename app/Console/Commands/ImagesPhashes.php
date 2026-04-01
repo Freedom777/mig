@@ -16,13 +16,19 @@ class ImagesPhashes extends Command
 
     public const PHASH_DISTANCE_THRESHOLD = 5;
 
+    public function __construct(
+        protected ImagePathService $imagePathService
+    ) {
+        parent::__construct();
+    }
+
     public function handle()
     {
         $images = Image::query()->get(['id', 'hash']);
         $hashes = collect([]);
         $phashes = collect([]);
         foreach ($images as $image) {
-            $imagePath = ImagePathService::getImagePathByObj($image);
+            $imagePath = $this->imagePathService->getImagePathByObj($image);
             if (!is_file($imagePath)) {
                 continue;
             }

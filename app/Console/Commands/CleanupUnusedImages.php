@@ -11,6 +11,12 @@ class CleanupUnusedImages extends Command
     protected $signature = 'images:cleanup-unused {--dry-run : Только показать, какие файлы будут удалены}';
     protected $description = 'Удаляет debug-файлы, которые не используются в таблице images';
 
+    public function __construct(
+        protected ImagePathService $imagePathService
+    ) {
+        parent::__construct();
+    }
+
     public function handle()
     {
         $dryRun = $this->option('dry-run');
@@ -28,7 +34,7 @@ class CleanupUnusedImages extends Command
         foreach ($images as $img) {
             $disk = $img->disk;
             $basePath = trim($img->path, '/');
-            $debugPath = $basePath . '/' . ImagePathService::getImageDebugSubdir() . '/' . ltrim($img->debug_filename, '/');
+            $debugPath = $basePath . '/' . $this->imagePathService->getImageDebugSubdir() . '/' . ltrim($img->debug_filename, '/');
 
             $usedPaths[$disk][] = $debugPath;
         }
@@ -47,7 +53,7 @@ class CleanupUnusedImages extends Command
             $folders = collect($images)
                 ->where('disk', $disk)
                 ->pluck('path')
-                ->map(fn($path) => trim($path, '/') . '/' . ImagePathService::getImageDebugSubdir())
+                ->map(fn($path) => trim($path, '/') . '/' . $this->imagePathService->getImageDebugSubdir())
                 ->unique();
 
             $debugFiles = collect();
