@@ -64,7 +64,7 @@ class ImagePathService implements ImagePathServiceInterface
      */
     public function getThumbnailUrl(Image $image): string
     {
-        return config('app.image_api_url') . '/thumbnail/' . $image->id . '.jpg';
+        return config('app.image_api_url') . '/' . config('image.paths.thumbnails') . '/' . $image->id . '.jpg';
     }
 
     /**
@@ -72,7 +72,7 @@ class ImagePathService implements ImagePathServiceInterface
      */
     public function getImageUrl(Image $image): string
     {
-        return config('app.image_api_url') . '/image/' . $image->id . '.jpg';
+        return config('app.image_api_url') . '/' . config('image.paths.images') . '/' . $image->id . '.jpg';
     }
 
     /**

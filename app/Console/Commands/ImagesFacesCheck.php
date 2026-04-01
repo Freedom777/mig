@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Contracts\ImagePathServiceInterface;
 use App\Contracts\ImageQueueDispatcherInterface;
+use App\Enums\ImageStatusEnum;
 use App\Models\Face;
 use App\Models\Image;
 use Illuminate\Console\Command;
@@ -24,7 +25,7 @@ class ImagesFacesCheck extends Command
     public function handle(): int
     {
         $images = Image::where('faces_checked', 1)
-            ->orWhere('status', Image::STATUS_RECHECK)
+            ->orWhere('status', ImageStatusEnum::Recheck->value)
             ->get();
 
         if ($images->isEmpty()) {
@@ -40,7 +41,7 @@ class ImagesFacesCheck extends Command
 
         foreach ($images as $image) {
             $debugImagePath = $this->pathService->getDebugImagePath($image);
-            $needsReprocess = $image->status === Image::STATUS_RECHECK
+            $needsReprocess = $image->status === ImageStatusEnum::Recheck->value
                 || !$debugImagePath
                 || !is_file($debugImagePath);
 
@@ -87,7 +88,7 @@ class ImagesFacesCheck extends Command
         Face::where('image_id', $image->id)->forceDelete();
 
         // Удаляем debug файл если есть и это recheck
-        if ($image->status === Image::STATUS_RECHECK && $debugImagePath && file_exists($debugImagePath)) {
+        if ($image->status === ImageStatusEnum::Recheck->value && $debugImagePath && file_exists($debugImagePath)) {
             unlink($debugImagePath);
         }
 
@@ -95,7 +96,7 @@ class ImagesFacesCheck extends Command
         $image->update([
             'faces_checked' => 0,
             'debug_filename' => null,
-            'status' => Image::STATUS_PROCESS,
+            'status' => ImageStatusEnum::Process->value,
         ]);
 
         // Ставим в очередь на переобработку

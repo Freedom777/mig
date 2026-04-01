@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Casts\HexCast;
+use App\Enums\ImageStatusEnum;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -10,11 +11,6 @@ use Illuminate\Database\Eloquent\Relations\HasOneThrough;
 
 class Image extends Model
 {
-    public const STATUS_PROCESS = 'process';
-    public const STATUS_NOT_PHOTO = 'not_photo';
-    public const STATUS_RECHECK = 'recheck';
-    public const STATUS_OK = 'ok';
-
     protected $casts = [
         'metadata' => 'array',
         'faces_checked' => 'boolean',
@@ -120,11 +116,4 @@ class Image extends Model
 
         return $query->first();
     }
-
-    // ==========================================
-    // REMOVED: Бизнес-логика перенесена в ImageRepository
-    // - prepareData() -> ImageRepository::prepareImageData()
-    // - updateInsert() -> ImageRepository::updateOrCreate()
-    // - findSimilarImageId() -> ImageRepository::findSimilarByPhash()
-    // ==========================================
 }

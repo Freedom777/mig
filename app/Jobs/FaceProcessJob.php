@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Contracts\ImagePathServiceInterface;
+use App\Enums\FaceStatusEnum;
 use App\Models\Face;
 use App\Models\Image;
 use Illuminate\Support\Facades\Cache;
@@ -80,7 +81,7 @@ class FaceProcessJob extends BaseProcessJob
         $faces = Face::query()
             ->whereNotNull('encoding')
             ->whereNull('parent_id')
-            ->where('status', Face::STATUS_OK)
+            ->where('status', FaceStatusEnum::Ok->value)
             ->get(['id', 'encoding']);
 
         $threshold = config('image.face_api.threshold', 0.6);

@@ -26,18 +26,35 @@ Route::get('/thumbnail/{id}.jpg', [ApiImageActionController::class, 'showThumbna
 // });
 
 Route::controller(ApiFaceController::class)->prefix('face')->group(function () {
-    Route::get('list', 'list');
+    Route::get('{image}', 'list');          // GET /api/face/123
+    Route::post('{image}', 'save');         // POST /api/face/123
+    Route::delete('{image}/{faceIndex}', 'remove'); // DELETE /api/face/123/0
+    /*Route::get('list', 'list');
     Route::post('save', 'save');
-    Route::delete('remove', 'remove');
+    Route::delete('remove', 'remove');*/
 });
 
-Route::controller(ApiImageActionController::class)->prefix('image')->group(function () {
+Route::controller(ApiFaceController::class)->prefix('images')->group(function () {
+    Route::get('{image}/faces', 'list');
+    Route::put('{image}/faces/{faceIndex}', 'save');
+    Route::delete('{image}/faces/{faceIndex}', [ApiFaceController::class, 'remove']);
+});
+
+Route::controller(ApiImageActionController::class)->prefix('images')->group(function () {
+    Route::get('{image}/debug', 'debug');
+    Route::get('{image}/nearby', 'nearby');
+    Route::patch('{image}', 'update');
+    Route::delete('{image}', 'destroy');
+    // Route::get('{image}.jpg', 'show');
+    Route::patch('{image}/status', 'status');
+
+
+    /*
     Route::get('{id}/nearby', 'nearby');
     Route::get('debug/{id}.jpg', 'showDebugImage');
-    Route::get('{id}.jpg', 'show');
-    Route::get('{id}/remove', 'remove');
 
-    Route::patch('{id}/status', 'status');
+    Route::get('{id}/remove', 'remove');
+    */
 
     Route::post('new-upload', 'newUpload');
     Route::get('upload', 'newUpload');

@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Face;
 use App\Models\Image;
 use App\Models\ImageGeolocationAddress;
+use App\Models\Person;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
 
@@ -25,7 +26,9 @@ class ApiFilterController extends Controller
         */
 
         $data = [
-            'people' => Face::distinct()->whereNotNull('name')->pluck('name'),
+            'people' => Person::whereNotNull('name')
+                ->orderBy('name')
+                ->get(['id', 'name']),
             'cities' => ImageGeolocationAddress::getCitiesList(),
             'tags' => Image::distinct()->pluck('path'),
             'dateRange' => [

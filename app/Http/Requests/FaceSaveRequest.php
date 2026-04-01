@@ -2,9 +2,9 @@
 
 namespace App\Http\Requests;
 
-use App\Models\Face;
+use App\Enums\FaceStatusEnum;
 use Illuminate\Foundation\Http\FormRequest;
-use Illuminate\Support\Facades\Auth;
+use Illuminate\Validation\Rules\Enum;
 
 class FaceSaveRequest extends FormRequest
 {
@@ -19,6 +19,14 @@ class FaceSaveRequest extends FormRequest
         return true;
     }
 
+    public function validationData(): array
+    {
+        return array_merge($this->all(), [
+            'image_id' => $this->route('image')?->id,
+            'face_index' => $this->route('faceIndex'),
+        ]);
+    }
+
     /**
      * Get the validation rules that apply to the request.
      *
@@ -30,9 +38,7 @@ class FaceSaveRequest extends FormRequest
             'image_id' => 'required|integer',
             'face_index' => 'required|integer',
             'name' => 'nullable|string|max:255',
-            'status' => 'required|string|in:' . implode(',', [
-                /* Face::STATUS_PROCESS, */Face::STATUS_UNKNOWN, Face::STATUS_NOT_FACE, Face::STATUS_OK
-            ]),
+            'status' => ['required', new Enum(FaceStatusEnum::class)],
         ];
     }
 }

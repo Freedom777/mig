@@ -2,13 +2,14 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Enums\FaceStatusEnum;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\FaceDeleteRequest;
 use App\Http\Requests\FaceSaveRequest;
 use App\Models\Face;
+use App\Models\Image;
 use App\Models\Person;
 use App\Services\PersonService;
-use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 
 class ApiFaceController extends Controller
@@ -17,39 +18,44 @@ class ApiFaceController extends Controller
         private PersonService $personService
     ) {}
 
-    public function list(Request $request)
+    public function list(Image $image)
     {
-        $imageId = $request->input('image_id');
-
-        $faces = Face::where('image_id', $imageId)
+        $faces = $image->faces()
+            ->with('person:id,name')
             ->orderBy('face_index')
-            ->get(['id', 'face_index', 'name', 'status', 'person_id', 'quality_score']);
+            ->get(['id', 'image_id', 'face_index', 'status', 'person_id', 'quality_score']);
 
-        return response()->json($faces);
+        // Преобразуем для фронтенда
+        $result = $faces->map(function ($face) {
+            return [
+                'id' => $face->id,
+                'face_index' => $face->face_index,
+                'name' => $face->person?->name,
+                'status' => $face->status,
+                'person_id' => $face->person_id,
+                'quality_score' => $face->quality_score,
+            ];
+        });
+
+        return response()->json($result);
     }
 
-    public function save(FaceSaveRequest $request)
+    public function save(FaceSaveRequest $request, Image $image, int $faceIndex)
     {
-        $validated = $request->validated();
-
-        $face = Face::where('image_id', $request->image_id)
-            ->where('face_index', $request->face_index)
+        $face = $image->faces()
+            ->where('face_index', $faceIndex)
             ->firstOrFail();
 
         $oldPersonId = $face->person_id;
         $newPersonId = null;
 
         // Если статус OK и есть имя — привязываем к Person
-        if ($request->status == Face::STATUS_OK && $request->name) {
-            $person = Person::firstOrCreate(
-                ['name' => $request->name],
-                ['name' => $request->name]
-            );
+        if ($request->status == FaceStatusEnum::Ok->value && $request->name) {
+            $person = Person::firstOrCreate(['name' => $request->name]);
             $newPersonId = $person->id;
         }
 
         $face->update([
-            'name' => $request->status == Face::STATUS_OK ? $request->name : null,
             'status' => $request->status,
             'person_id' => $newPersonId,
         ]);
@@ -57,12 +63,20 @@ class ApiFaceController extends Controller
         // Пересчитать centroid для затронутых persons
         if ($newPersonId) {
             $this->personService->recalculateCentroid(Person::find($newPersonId));
-        }
-        if ($oldPersonId && $oldPersonId !== $newPersonId) {
-            $this->personService->recalculateCentroid(Person::find($oldPersonId));
+            $linked = $this->personService->linkSimilarFaces($face, Person::find($newPersonId));
         }
 
-        // Обновить дочерние faces (у которых parent_id = этому лицу)
+        if ($oldPersonId && $oldPersonId !== $newPersonId) {
+
+            $person = Person::find($oldPersonId);
+
+            if ($person) {
+                $this->personService->recalculateCentroid($person);
+
+            }
+        }
+
+        // Обновить дочерние faces
         $this->updateChildFaces($face);
 
         return response()->json(['success' => true]);
@@ -76,11 +90,10 @@ class ApiFaceController extends Controller
         $faceId = $face->parent_id ?? $face->id;
 
         Face::where('parent_id', $faceId)
-            ->where('status', Face::STATUS_PROCESS)
+            ->where('status', FaceStatusEnum::Process->value)
             ->update([
-                'name' => $face->name,
                 'person_id' => $face->person_id,
-                'status' => $face->status, // OK если родитель OK
+                'status' => $face->status,
             ]);
 
         // Пересчитать centroid с учётом новых лиц
@@ -89,12 +102,10 @@ class ApiFaceController extends Controller
         }
     }
 
-    public function remove(FaceDeleteRequest $request)
+    public function remove(Image $image, int $faceIndex)
     {
-        $validated = $request->validated();
-
-        $face = Face::where('image_id', $request->image_id)
-            ->where('face_index', $request->face_index)
+        $face = $image->faces()
+            ->where('face_index', $faceIndex)
             ->first();
 
         if ($face && $face->person_id) {

@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\ApiImageActionController;
 use App\Http\Controllers\ImageController;
 use App\Http\Controllers\PhotoController;
 use App\Http\Controllers\WelcomeController;
@@ -21,6 +22,9 @@ Route::get('dashboard', function () {
 
 Route::get('/images', [ImageController::class, 'index'])->middleware(['auth', 'verified'])->name('images.index');
 Route::get('/photos', [PhotoController::class, 'index'])->middleware(['auth', 'verified'])->name('photos.index');
+
+Route::get('/images/{image}.jpg', [ApiImageActionController::class, 'show']);
+Route::get('/thumbnails/{image}.jpg', [ApiImageActionController::class, 'showThumbnail']);
 
 Route::prefix('admin')->group(function () {
     Route::get('/commands', [CommandController::class, 'index'])->name('admin.commands');

@@ -63,10 +63,10 @@ return [
     |--------------------------------------------------------------------------
     */
     'paths' => [
-        'disk' => env('IMAGE_DISK', 'private'),
+        'disk' => env('IMAGE_DISK', 'local'),
         'images' => env('IMAGE_PATH', 'images'),
         'root' => $storagePath,
-        'thumbnails' => env('THUMBNAIL_STORAGE_PATH', 'thumbnails'),
+        'thumbnails' => env('THUMBNAIL_PATH', 'thumbnails'),
         'debug_subdir' => env('IMAGE_DEBUG_SUBDIR', 'debug'),
     ],
 

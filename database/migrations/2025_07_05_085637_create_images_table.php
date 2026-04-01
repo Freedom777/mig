@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\ImageStatusEnum;
 use App\Models\Image;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
@@ -24,8 +25,8 @@ return new class extends Migration {
             $table->integer('width')->nullable();
             $table->integer('height')->nullable();
             $table->integer('size')->nullable(); // Filesize
-            $table->binary('hash', 16); // BINARY(16) для MD5
-            $table->binary('phash', length: 8, fixed: true); // BINARY(8) для perceptual hash
+            $table->binary('hash', 16)->nullable(); // BINARY(16) для MD5
+            $table->binary('phash', length: 8, fixed: true)->nullable(); // BINARY(8) для perceptual hash
             $table->dateTime('created_at_file')->nullable();
             $table->dateTime('updated_at_file')->nullable();
             $table->json('metadata')->nullable();
@@ -40,7 +41,7 @@ return new class extends Migration {
 
             $table->timestamps();
 
-            $table->enum('status', [Image::STATUS_PROCESS, Image::STATUS_NOT_PHOTO, Image::STATUS_RECHECK, Image::STATUS_OK])->default(Image::STATUS_PROCESS);
+            $table->enum('status', ImageStatusEnum::values())->default(ImageStatusEnum::Process);
             $table->string('last_error')->nullable();
 
             $table->index(['disk', 'path', 'filename'], 'disk_path_filename_index');

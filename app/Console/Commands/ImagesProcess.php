@@ -5,12 +5,13 @@ namespace App\Console\Commands;
 use App\Contracts\ImageServiceInterface;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Storage;
+use Symfony\Component\Console\Command\Command as CommandAlias;
 
 class ImagesProcess extends Command
 {
     protected $signature = 'images:process
-                            {disk : Source disk}
-                            {source : Source directory with images}
+                            {disk? : Source disk}
+                            {source? : Source directory with images}
                             {--skip-existing : Skip images that already exist in database}';
 
     protected $description = 'Process images: copy, get basic info, queue for processing';
@@ -23,20 +24,20 @@ class ImagesProcess extends Command
 
     public function handle(): int
     {
-        $diskLabel = $this->argument('disk');
+        $diskLabel = $this->argument('disk') ?? config('image.paths.disk', 'local');
         $disk = Storage::disk($diskLabel);
-        $source = $this->argument('source');
+        $source = $this->argument('source') ?? config('image.paths.images', 'images');
         $skipExisting = $this->option('skip-existing');
 
         if (!is_dir($disk->path($source))) {
             $this->error("Not a directory: disk '{$diskLabel}', path: '{$source}'");
-            return Command::FAILURE;
+            return CommandAlias::FAILURE;
         }
 
         $this->processDirectory($diskLabel, $source, $skipExisting);
         $this->info('Image processing completed');
 
-        return Command::SUCCESS;
+        return CommandAlias::SUCCESS;
     }
 
     protected function processDirectory(string $diskLabel, string $source, bool $skipExisting): void
@@ -74,6 +75,7 @@ class ImagesProcess extends Command
 
     protected function processImage(string $disk, string $path, string $filename, bool $skipExisting): void
     {
+        $fullPath = $disk . '//' . $path . '/' . $filename;
         try {
             $result = $this->imageService->processNewUpload(
                 disk: $disk,
@@ -83,13 +85,13 @@ class ImagesProcess extends Command
             );
 
             if ($result['success']) {
-                $this->info("Queued: {$disk}//{$path}/{$filename} (ID: {$result['image']->id})");
+                $this->info('Queued: ' . $fullPath . ' (ID: ' . $result['image']->id . ')');
             } else {
-                $this->warn("Skipped: {$disk}//{$path}/{$filename} - {$result['message']}");
+                $this->warn('Skipped: ' . $fullPath . ' - ' . $result['message']);
             }
 
         } catch (\Exception $e) {
-            $this->error("Failed: {$disk}//{$path}/{$filename} - {$e->getMessage()}");
+            $this->error('Failed: ' . $fullPath . ' - ' . $e->getMessage());
         }
     }
 

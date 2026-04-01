@@ -2,20 +2,24 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Contracts\ImagePathServiceInterface;
 use App\Contracts\ImageServiceInterface;
+use App\Enums\ImageStatusEnum;
 use App\Http\Controllers\Controller;
 use App\Models\Image;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\Rules\Enum;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Symfony\Component\HttpFoundation\Response;
 
 class ApiImageActionController extends Controller
 {
     public function __construct(
-        protected ImageServiceInterface $imageService
+        protected ImageServiceInterface $imageService,
+        protected ImagePathServiceInterface $pathService
     ) {}
 
     /**
@@ -23,10 +27,10 @@ class ApiImageActionController extends Controller
      *
      * @route GET /api/image/{id}/nearby
      */
-    public function nearby(int $id): JsonResponse
+    public function nearby(Image $image): JsonResponse
     {
-        $prev = Image::previous($id, Image::STATUS_PROCESS);
-        $next = Image::next($id, Image::STATUS_PROCESS);
+        $prev = Image::previous($image->id, ImageStatusEnum::Process->value);
+        $next = Image::next($image->id, ImageStatusEnum::Process->value);
 
         return response()->json([
             'prev' => $prev ? [
@@ -43,9 +47,8 @@ class ApiImageActionController extends Controller
     /**
      * Show debug image
      */
-    public function showDebugImage(int $id): BinaryFileResponse|JsonResponse
+    public function debug(Image $image): BinaryFileResponse|JsonResponse
     {
-        $image = Image::findOrFail($id);
         $debugPath = $image->path . '/debug/' . $image->debug_filename;
 
         if (!Storage::disk($image->disk)->exists($debugPath)) {
@@ -58,9 +61,8 @@ class ApiImageActionController extends Controller
     /**
      * Show original image
      */
-    public function show(int $id): BinaryFileResponse|JsonResponse
+    public function show(Image $image): BinaryFileResponse|JsonResponse
     {
-        $image = Image::findOrFail($id);
         $path = $image->path . '/' . $image->filename;
 
         if (!Storage::disk($image->disk)->exists($path)) {
@@ -73,59 +75,28 @@ class ApiImageActionController extends Controller
     /**
      * Show thumbnail
      */
-    public function showThumbnail(int $id): BinaryFileResponse|JsonResponse
+    public function showThumbnail(Image $image): BinaryFileResponse|JsonResponse
     {
-        $image = Image::findOrFail($id);
-        $thumbnailPath = implode('/', array_filter([
-            $image->path,
-            $image->thumbnail_path,
-            $image->thumbnail_filename
-        ]));
+        $thumbnailPath = $this->pathService->getExistingThumbnailPath($image);
 
-        if (!Storage::disk($image->disk)->exists($thumbnailPath)) {
+        if (!$thumbnailPath) {
             return response()->json(['error' => 'File not found'], Response::HTTP_NOT_FOUND);
         }
 
-        return response()->file(Storage::disk($image->disk)->path($thumbnailPath));
+        return response()->file($thumbnailPath);
     }
 
     /**
      * Update image status
      */
-    public function status(int $id, Request $request): JsonResponse
+    public function status(Image $image, Request $request): JsonResponse
     {
-        $image = Image::findOrFail($id);
-        $image->status = $request->input('status');
-        $image->save();
+        $validated = $request->validate([
+            'status' => ['required', new Enum(ImageStatusEnum::class)],
+        ]);
+        $image->update(['status' => $validated['status']]);
 
-        return response()->json(['status' => Image::STATUS_OK]);
-    }
-
-    /**
-     * Mark image as complete
-     */
-    public function complete(int $id): JsonResponse
-    {
-        $image = Image::find($id);
-
-        if ($image) {
-            $image->status = Image::STATUS_OK;
-            $image->save();
-        }
-
-        return response()->json(['status' => Image::STATUS_OK]);
-    }
-
-    /**
-     * Mark image as not a photo
-     */
-    public function remove(int $id): JsonResponse
-    {
-        $image = Image::findOrFail($id);
-        $image->status = Image::STATUS_NOT_PHOTO;
-        $image->save();
-
-        return response()->json(['status' => Image::STATUS_OK]);
+        return response()->json(['status' => $image->status]);
     }
 
     /**

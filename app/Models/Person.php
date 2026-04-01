@@ -2,11 +2,14 @@
 
 namespace App\Models;
 
+use App\Enums\FaceStatusEnum;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Person extends Model
 {
+    protected $table = 'persons';
+
     protected $fillable = [
         'name',
         'photo',
@@ -25,7 +28,7 @@ class Person extends Model
 
     public function confirmedFaces(): HasMany
     {
-        return $this->hasMany(Face::class)->where('status', Face::STATUS_OK);
+        return $this->hasMany(Face::class)->where('status', FaceStatusEnum::Ok->value->value());
     }
 
     public function referenceFaces(): HasMany

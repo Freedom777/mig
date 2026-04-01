@@ -2,7 +2,10 @@
 
 namespace App\Services;
 
+use App\Enums\FaceStatusEnum;
+use App\Enums\ImageStatusEnum;
 use App\Models\Face;
+use App\Models\Image;
 use App\Models\Person;
 use Illuminate\Support\Collection;
 
@@ -18,7 +21,7 @@ class PersonService
     public function recalculateCentroid(Person $person): void
     {
         $faces = Face::where('person_id', $person->id)
-            ->where('status', Face::STATUS_OK)
+            ->where('status', FaceStatusEnum::Ok->value)
             ->whereNotNull('encoding')
             ->get();
 
@@ -182,5 +185,73 @@ class PersonService
         }
 
         return json_decode($face->encoding, true);
+    }
+
+    // PersonService.php
+
+    public function linkSimilarFaces(Face $confirmedFace, Person $person, float $threshold = 0.6): int
+    {
+        $unlinkedFaces = Face::whereNull('person_id')
+            ->where('status', FaceStatusEnum::Process->value)
+            ->whereNotNull('encoding')
+            ->where('id', '!=', $confirmedFace->id)
+            ->get();
+
+        $linked = 0;
+        $confirmedEncoding = $this->getEncoding($confirmedFace);
+        $affectedImageIds = collect();
+
+        if (!$confirmedEncoding) {
+            return 0;
+        }
+
+        foreach ($unlinkedFaces as $face) {
+            $faceEncoding = $this->getEncoding($face);
+            if (!$faceEncoding) {
+                continue;
+            }
+
+            $distance = $this->euclideanDistance($confirmedEncoding, $faceEncoding);
+
+            if ($distance < $threshold) {
+                $face->update([
+                    'person_id' => $person->id,
+                    'status' => FaceStatusEnum::Ok->value,
+                ]);
+                $linked++;
+                $affectedImageIds->push($face->image_id);
+            }
+        }
+
+        if ($linked > 0) {
+            $this->recalculateCentroid($person);
+
+            // Проверяем и обновляем статус затронутых images
+            $this->updateImagesStatus($affectedImageIds->unique());
+        }
+
+        return $linked;
+    }
+
+    /**
+     * Обновить статус images, если все faces обработаны
+     */
+    private function updateImagesStatus(Collection $imageIds): void
+    {
+        foreach ($imageIds as $imageId) {
+            $image = Image::find($imageId);
+            if (!$image) {
+                continue;
+            }
+
+            // Проверяем есть ли необработанные faces
+            $hasUnprocessedFaces = $image->faces()
+                ->where('status', FaceStatusEnum::Process->value)
+                ->exists();
+
+            if (!$hasUnprocessedFaces) {
+                $image->update(['status' => ImageStatusEnum::Ok->value]);
+            }
+        }
     }
 }
