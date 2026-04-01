@@ -24,11 +24,6 @@ const props = defineProps({
 
 const emit = defineEmits(['update:selectedFilters', 'filters-changed'])
 
-// Dropdown states
-const showPeopleDropdown = ref(false)
-const showCitiesDropdown = ref(false)
-const showTagsDropdown = ref(false)
-
 // Mobile detection
 const isMobileView = ref(false)
 
@@ -39,47 +34,11 @@ const checkMobile = () => {
 onMounted(() => {
     checkMobile()
     window.addEventListener('resize', checkMobile)
-    document.addEventListener('click', handleClickOutside)
 })
 
 onUnmounted(() => {
     window.removeEventListener('resize', checkMobile)
-    document.removeEventListener('click', handleClickOutside)
 })
-
-// Refs для dropdown контейнеров
-const peopleDropdownRef = ref(null)
-const citiesDropdownRef = ref(null)
-const tagsDropdownRef = ref(null)
-
-const handleClickOutside = (event) => {
-    // Закрываем dropdown если клик вне их
-    if (peopleDropdownRef.value && !peopleDropdownRef.value.contains(event.target)) {
-        showPeopleDropdown.value = false
-    }
-    if (citiesDropdownRef.value && !citiesDropdownRef.value.contains(event.target)) {
-        showCitiesDropdown.value = false
-    }
-    if (tagsDropdownRef.value && !tagsDropdownRef.value.contains(event.target)) {
-        showTagsDropdown.value = false
-    }
-}
-
-const toggleDropdown = (dropdown) => {
-    if (dropdown === 'people') {
-        showPeopleDropdown.value = !showPeopleDropdown.value
-        showCitiesDropdown.value = false
-        showTagsDropdown.value = false
-    } else if (dropdown === 'cities') {
-        showCitiesDropdown.value = !showCitiesDropdown.value
-        showPeopleDropdown.value = false
-        showTagsDropdown.value = false
-    } else if (dropdown === 'tags') {
-        showTagsDropdown.value = !showTagsDropdown.value
-        showPeopleDropdown.value = false
-        showCitiesDropdown.value = false
-    }
-}
 
 // Update filter wrapper
 const updateFilter = (key, value) => {
@@ -207,96 +166,45 @@ onMounted(loadAvailableDates)
     <header
         class="flex h-16 shrink-0 items-center gap-2 border-b border-sidebar-border/70 px-6 transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-12 md:px-4"
     >
-        <!-- Левая часть: Toggle + Фильтры -->
-        <div class="flex items-center gap-3 flex-1 min-w-0">
+        <!-- Левая часть: Toggle + Фильтры горизонтально -->
+        <div class="flex items-center gap-3 flex-1 min-w-0 overflow-x-auto">
             <!-- SidebarTrigger только для залогиненных -->
-            <SidebarTrigger v-if="showSidebarToggle" class="-ml-1" />
+            <SidebarTrigger v-if="showSidebarToggle" class="-ml-1 flex-shrink-0" />
 
             <!-- Кнопка "Сбросить всё" -->
             <button
                 v-if="hasActiveFilters"
                 @click="clearAllFilters"
-                class="text-xs text-muted-foreground hover:text-foreground underline transition-colors whitespace-nowrap"
+                class="text-xs text-muted-foreground hover:text-foreground underline transition-colors whitespace-nowrap flex-shrink-0"
             >
                 Сбросить всё
             </button>
 
-            <!-- Dropdown фильтры -->
-            <div class="flex items-center gap-2 flex-wrap">
-                <!-- People Filter Dropdown -->
-                <div class="relative" ref="peopleDropdownRef">
-                    <button
-                        @click.stop="toggleDropdown('people')"
-                        class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-colors"
-                        :class="props.selectedFilters.people?.length > 0 
-                            ? 'bg-gradient-to-r from-violet-600 to-purple-600 text-white' 
-                            : 'bg-muted text-muted-foreground hover:bg-muted/80'"
-                    >
-                        Имена
-                        <span v-if="props.selectedFilters.people?.length > 0" class="ml-0.5">({{ props.selectedFilters.people.length }})</span>
-                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
-                        </svg>
-                    </button>
-                    
-                    <div v-if="showPeopleDropdown" class="dropdown-menu">
-                        <PeopleFilter
-                            :people="filters.people"
-                            :model-value="selectedFilters.people"
-                            @update:model-value="val => updateFilter('people', val)"
-                        />
-                    </div>
-                </div>
+            <!-- Разделитель -->
+            <div v-if="hasActiveFilters || showSidebarToggle" class="h-6 w-px bg-border flex-shrink-0"></div>
 
-                <!-- Cities Filter Dropdown -->
-                <div class="relative" ref="citiesDropdownRef">
-                    <button
-                        @click.stop="toggleDropdown('cities')"
-                        class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-colors"
-                        :class="props.selectedFilters.cities?.length > 0 
-                            ? 'bg-gradient-to-r from-violet-600 to-purple-600 text-white' 
-                            : 'bg-muted text-muted-foreground hover:bg-muted/80'"
-                    >
-                        Города
-                        <span v-if="props.selectedFilters.cities?.length > 0" class="ml-0.5">({{ props.selectedFilters.cities.length }})</span>
-                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
-                        </svg>
-                    </button>
-                    
-                    <div v-if="showCitiesDropdown" class="dropdown-menu">
-                        <CityFilter
-                            :cities="filters.cities"
-                            :model-value="selectedFilters.cities"
-                            @update:model-value="val => updateFilter('cities', val)"
-                        />
-                    </div>
-                </div>
+            <!-- Фильтры горизонтально в строку -->
+            <div class="flex items-center gap-3 flex-wrap">
+                <!-- People Filter -->
+                <PeopleFilter
+                    :people="filters.people"
+                    :model-value="selectedFilters.people"
+                    @update:model-value="val => updateFilter('people', val)"
+                />
 
-                <!-- Tags Filter Dropdown -->
-                <div class="relative" ref="tagsDropdownRef">
-                    <button
-                        @click.stop="toggleDropdown('tags')"
-                        class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-colors"
-                        :class="props.selectedFilters.tags?.length > 0 
-                            ? 'bg-gradient-to-r from-violet-600 to-purple-600 text-white' 
-                            : 'bg-muted text-muted-foreground hover:bg-muted/80'"
-                    >
-                        Тэги
-                        <span v-if="props.selectedFilters.tags?.length > 0" class="ml-0.5">({{ props.selectedFilters.tags.length }})</span>
-                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
-                        </svg>
-                    </button>
-                    
-                    <div v-if="showTagsDropdown" class="dropdown-menu">
-                        <TagsFilter
-                            :tags="filters.tags"
-                            :model-value="selectedFilters.tags"
-                            @update:model-value="val => updateFilter('tags', val)"
-                        />
-                    </div>
-                </div>
+                <!-- Cities Filter -->
+                <CityFilter
+                    :cities="filters.cities"
+                    :model-value="selectedFilters.cities"
+                    @update:model-value="val => updateFilter('cities', val)"
+                />
+
+                <!-- Tags Filter -->
+                <TagsFilter
+                    :tags="filters.tags"
+                    :model-value="selectedFilters.tags"
+                    @update:model-value="val => updateFilter('tags', val)"
+                />
             </div>
         </div>
 
@@ -331,23 +239,6 @@ onMounted(loadAvailableDates)
 .slider-container {
     display: flex;
     align-items: center;
-}
-
-/* Dropdown menu */
-.dropdown-menu {
-    position: absolute;
-    top: 100%;
-    left: 0;
-    margin-top: 0.5rem;
-    background: hsl(var(--popover));
-    border: 1px solid hsl(var(--border));
-    border-radius: 0.5rem;
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-    z-index: 50;
-    min-width: 250px;
-    max-height: 400px;
-    overflow-y: auto;
-    padding: 0.5rem;
 }
 
 /* Стилизация слайдера для тёмной темы */
