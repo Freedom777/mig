@@ -133,13 +133,13 @@ watch(() => props.selectedFilters.dateRange, (newValue) => {
 
 // Активные фильтры
 const hasActiveFilters = computed(() => {
-    const hasChips = props.selectedFilters.people?.length > 0 || 
-                     props.selectedFilters.cities?.length > 0 || 
+    const hasChips = props.selectedFilters.people?.length > 0 ||
+                     props.selectedFilters.cities?.length > 0 ||
                      props.selectedFilters.tags?.length > 0
-    
-    const hasDateFilter = localRange.value[0] !== 0 || 
+
+    const hasDateFilter = localRange.value[0] !== 0 ||
                           localRange.value[1] !== (availableDates.value.length - 1)
-    
+
     return hasChips || hasDateFilter
 })
 
@@ -164,7 +164,7 @@ onMounted(loadAvailableDates)
 
 <template>
     <header
-        class="flex h-16 shrink-0 items-center gap-2 border-b border-sidebar-border/70 px-6 transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-12 md:px-4"
+        class="sticky top-0 z-10 flex h-16 shrink-0 items-center gap-2 border-b border-sidebar-border/70 px-6 transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-12 md:px-4"
     >
         <!-- Левая часть: Toggle + Фильтры горизонтально -->
         <div class="flex items-center gap-3 flex-1 min-w-0 overflow-x-auto">
