@@ -13,6 +13,7 @@ use Illuminate\Support\Str;
 
 class FaceProcessJob extends BaseProcessJob
 {
+    private const CONNECT_TIMEOUT = 10; // Время для подключения
     private const FACE_API_TIMEOUT = 300; // 5 минут для CPU
 
     /**
@@ -50,14 +51,35 @@ class FaceProcessJob extends BaseProcessJob
         $image = Image::findOrFail($this->taskData['image_id']);
         $imagePath = $pathService->getImagePathByObj($image);
 
-        Log::info('original_path: ' . $imagePath);
-        Log::info('image_debug_subdir: ' . $pathService->getImageDebugSubdir());
-        $response = Http::timeout(self::FACE_API_TIMEOUT)
-            ->attach('image', file_get_contents($imagePath), $image->filename)
-            ->post(config('image.face_api.url') . '/encode', [
-                'original_path' => $imagePath,
-                'image_debug_subdir' => $pathService->getImageDebugSubdir()
+        // Проверка существования файла
+        if (!file_exists($imagePath)) {
+            throw new \Exception("Image file not found: {$imagePath}");
+        }
+
+        Log::info('Processing face for image', [
+            'image_id' => $image->id,
+            'path' => $imagePath
+        ]);
+
+        try {
+            $response = Http::connectTimeout(self::CONNECT_TIMEOUT)
+                ->timeout(self::FACE_API_TIMEOUT)
+                ->attach(
+                    'image',
+                    fopen($imagePath, 'r'), // ← Используй fopen вместо file_get_contents
+                    $image->filename
+                )
+                ->post(config('image.face_api.url') . '/encode', [
+                    'original_path' => $imagePath,
+                    'image_debug_subdir' => $pathService->getImageDebugSubdir()
+                ]);
+        } catch (\Illuminate\Http\Client\ConnectionException $e) {
+            Log::error('Cannot connect to Face API', [
+                'image_id' => $image->id,
+                'error' => $e->getMessage()
             ]);
+            throw new \Exception('Face API connection failed: ' . $e->getMessage());
+        }
 
         if (!$response->successful()) {
             $image->update([
