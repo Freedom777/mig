@@ -144,7 +144,8 @@ class FaceProcessJob extends BaseProcessJob
     {
         $knownEncodings = $faces->pluck('encoding')->toArray();
 
-        $compareResponse = Http::timeout(60)
+        $compareResponse = Http::connectTimeout(self::CONNECT_TIMEOUT)
+            ->timeout(60)
             ->post(config('image.face_api.url') . '/compare', [
                 'encoding' => $newEncoding,
                 'candidates' => $knownEncodings,
