@@ -2,7 +2,6 @@
 
 namespace App\Models;
 
-use App\Enums\FaceStatusEnum;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
@@ -32,16 +31,6 @@ class Face extends Model
     public function image()
     {
         return $this->belongsTo(Image::class, 'image_id', 'id');
-    }
-
-    public function children()
-    {
-        return $this->hasMany(Face::class, 'parent_id');
-    }
-
-    public function parent()
-    {
-        return $this->belongsTo(Face::class, 'parent_id');
     }
 
     public function person(): BelongsTo

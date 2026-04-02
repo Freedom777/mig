@@ -117,14 +117,6 @@ class FaceProcessJob extends BaseProcessJob
             $newFace->face_index = $idx;
             $newFace->quality_score = $quality['total'] ?? null;
             $newFace->quality_details = $quality['details'] ?? null;
-
-            if ($faces->isNotEmpty()) {
-                $parentId = $this->findMatchingFace($newEncoding, $faces, $threshold);
-                if ($parentId) {
-                    $newFace->parent_id = $parentId;
-                }
-            }
-
             $newFace->save();
         }
 

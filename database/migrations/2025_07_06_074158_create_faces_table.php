@@ -15,7 +15,6 @@ return new class extends Migration
     {
         Schema::create('faces', function (Blueprint $table) {
             $table->id();
-            $table->unsignedBigInteger('parent_id')->nullable(); // nullable for updating afterward
             $table->unsignedBigInteger('image_id')->nullable(); // nullable for updating afterward
             $table->foreignId('person_id')->nullable()->constrained('persons')->nullOnDelete();
             $table->unsignedTinyInteger('face_index');

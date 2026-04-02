@@ -49,57 +49,40 @@ class ApiFaceController extends Controller
         $oldPersonId = $face->person_id;
         $newPersonId = null;
 
-        // Если статус OK и есть имя — привязываем к Person
+        // Создаём/находим Person
         if ($request->status == FaceStatusEnum::Ok->value && $request->name) {
             $person = Person::firstOrCreate(['name' => $request->name]);
             $newPersonId = $person->id;
         }
 
+        // Обновляем Face
         $face->update([
             'status' => $request->status,
             'person_id' => $newPersonId,
         ]);
 
-        // Пересчитать centroid для затронутых persons
+        $linkedCount = 0;
+
+        // Если привязали к Person
         if ($newPersonId) {
-            $this->personService->recalculateCentroid(Person::find($newPersonId));
-            $linked = $this->personService->linkSimilarFaces($face, Person::find($newPersonId));
+            $person = Person::find($newPersonId);
+
+            // Линкуем похожие лица
+            $linkedCount = $this->personService->linkSimilarFaces($face, $person);
         }
 
+        // Пересчитываем centroid для старой персоны
         if ($oldPersonId && $oldPersonId !== $newPersonId) {
-
-            $person = Person::find($oldPersonId);
-
-            if ($person) {
-                $this->personService->recalculateCentroid($person);
-
+            $oldPerson = Person::find($oldPersonId);
+            if ($oldPerson) {
+                $this->personService->recalculateCentroid($oldPerson);
             }
         }
 
-        // Обновить дочерние faces
-        $this->updateChildFaces($face);
-
-        return response()->json(['success' => true]);
-    }
-
-    /**
-     * Обновить дочерние лица
-     */
-    private function updateChildFaces(Face $face): void
-    {
-        $faceId = $face->parent_id ?? $face->id;
-
-        Face::where('parent_id', $faceId)
-            ->where('status', FaceStatusEnum::Process->value)
-            ->update([
-                'person_id' => $face->person_id,
-                'status' => $face->status,
-            ]);
-
-        // Пересчитать centroid с учётом новых лиц
-        if ($face->person_id) {
-            $this->personService->recalculateCentroid(Person::find($face->person_id));
-        }
+        return response()->json([
+            'success' => true,
+            'linked_faces' => $linkedCount,
+        ]);
     }
 
     public function remove(Image $image, int $faceIndex)
