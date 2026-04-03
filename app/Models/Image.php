@@ -86,12 +86,13 @@ class Image extends Model
     // ==========================================
 
     /**
-     * Найти предыдущее изображение
+     * Найти предыдущее изображение с debug_filename IS NOT NULL
      */
     public static function previous(int $id, ?string $status = null): ?self
     {
         $query = static::whereNull('parent_id')
             ->where('id', '<', $id)
+            ->whereNotNull('debug_filename')
             ->orderBy('id', 'desc'); // FIX: должен быть desc для "предыдущего"
 
         if ($status) {
@@ -102,12 +103,13 @@ class Image extends Model
     }
 
     /**
-     * Найти следующее изображение
+     * Найти следующее изображение с debug_filename IS NOT NULL
      */
     public static function next(int $id, ?string $status = null): ?self
     {
         $query = static::whereNull('parent_id')
             ->where('id', '>', $id)
+            ->whereNotNull('debug_filename')
             ->orderBy('id', 'asc');
 
         if ($status) {
