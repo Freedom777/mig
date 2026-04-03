@@ -34,7 +34,10 @@ export default {
          * Все faces обработаны (не в статусе process)
          */
         allFacesProcessed() {
-            return this.faces.length === 0 || this.faces.every(face => face.status !== this.FaceStatus.Process);
+            return this.faces.length === 0 || this.faces.every(face =>
+                face.status !== this.FaceStatus.Process &&
+                face.status !== this.FaceStatus.Suggested
+            );
         },
         /**
          * Можно завершить: все обработаны и у ok-статусов есть имена
