@@ -19,7 +19,7 @@ class ImagesReprocess extends Command
                             {--no-metadata : Images without metadata}
                             {--no-thumbnails : Images without thumbnail_path}
                             {--has-gps : Images with GPS but without geolocation}
-                            {--status=* : Images with specific status (error, process, recheck)}
+                            {--status=* : Images with specific status (process, recheck, not_photo, ok)}
                             {--limit= : Limit number of images}
                             {--dry-run : Show what would be reprocessed}
                             {--queue=all : Which queue (faces, metadata, thumbnails, geolocations, all)}';
@@ -89,7 +89,7 @@ class ImagesReprocess extends Command
             $this->line('Examples:');
             $this->line('  php artisan images:reprocess --faces-failed');
             $this->line('  php artisan images:reprocess --no-metadata --queue=metadata');
-            $this->line('  php artisan images:reprocess --status=error --limit=100');
+            $this->line('  php artisan images:reprocess --status=recheck --limit=100');
             return CommandAlias::SUCCESS;
         }
         
@@ -177,8 +177,8 @@ class ImagesReprocess extends Command
                 $queued['geolocations']++;
             }
             
-            // Сбрасываем статус error/recheck → process
-            if (in_array($image->status, [ImageStatusEnum::Error->value, ImageStatusEnum::Recheck->value])) {
+            // Сбрасываем статус recheck → process
+            if ($image->status === ImageStatusEnum::Recheck->value) {
                 $image->update(['status' => ImageStatusEnum::Process->value]);
             }
             
