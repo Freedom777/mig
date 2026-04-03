@@ -51,7 +51,10 @@ class ApiFaceController extends Controller
 
         // Если статус OK и есть имя — привязываем к Person
         if ($request->status == FaceStatusEnum::Ok->value && $request->name) {
-            $person = Person::firstOrCreate(['name' => $request->name]);
+            $person = Person::whereRaw('LOWER(name) = ?', [mb_strtolower($request->name)])->first();
+            if (!$person) {
+                $person = Person::create(['name' => $request->name]);
+            }
             $newPersonId = $person->id;
         }
 
@@ -66,15 +69,15 @@ class ApiFaceController extends Controller
         if ($newPersonId) {
             $person = Person::find($newPersonId);
             $threshold = config('image.face_api.threshold', 0.6);
-            
+
             // 1. Линкуем похожие лица (автоматически находит и присваивает)
             //    linkSimilarFaces внутри вызывает recalculateCentroid
             $linkedCount = $this->personService->linkSimilarFaces($face, $person, $threshold);
-            
+
             // 2. Если это первое лицо Person ИЛИ качество хорошее — пересчитываем centroid
             //    (linkSimilarFaces уже вызвал recalculateCentroid, но если нашли новые лица — нужно ещё раз)
             $minQuality = config('image.face_api.min_quality_for_centroid', 50);
-            
+
             if ($linkedCount > 0 || $face->quality_score >= $minQuality) {
                 // Пересчёт уже сделан в linkSimilarFaces, но если были новые лица — делаем ещё раз
                 if ($linkedCount > 0) {
