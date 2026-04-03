@@ -104,5 +104,6 @@ return [
     'face_api' => [
         'url' => env('FACE_API_URL', 'http://127.0.0.1:5000'),
         'threshold' => env('FACE_RECOGNITION_THRESHOLD', 0.6),
+        'min_quality_for_centroid' => env('FACE_MIN_QUALITY_FOR_CENTROID', 50),
     ],
 ];

@@ -6,6 +6,7 @@ use App\Contracts\ImagePathServiceInterface;
 use App\Enums\FaceStatusEnum;
 use App\Models\Face;
 use App\Models\Image;
+use App\Models\Person;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -13,8 +14,8 @@ use Illuminate\Support\Str;
 
 class FaceProcessJob extends BaseProcessJob
 {
-    private const CONNECT_TIMEOUT = 10; // Время для подключения
     private const FACE_API_TIMEOUT = 300; // 5 минут для CPU
+    private const EMBEDDING_SIZE = 128;
 
     /**
      * Execute the job.
@@ -56,19 +57,15 @@ class FaceProcessJob extends BaseProcessJob
             throw new \Exception("Image file not found: {$imagePath}");
         }
 
-        Log::info('Processing face for image', [
+        Log::info('Processing faces for image', [
             'image_id' => $image->id,
             'path' => $imagePath
         ]);
 
         try {
-            $response = Http::connectTimeout(self::CONNECT_TIMEOUT)
+            $response = Http::connectTimeout(10)
                 ->timeout(self::FACE_API_TIMEOUT)
-                ->attach(
-                    'image',
-                    fopen($imagePath, 'r'), // ← Используй fopen вместо file_get_contents
-                    $image->filename
-                )
+                ->attach('image', fopen($imagePath, 'r'), $image->filename)
                 ->post(config('image.face_api.url') . '/encode', [
                     'original_path' => $imagePath,
                     'image_debug_subdir' => $pathService->getImageDebugSubdir()
@@ -99,14 +96,13 @@ class FaceProcessJob extends BaseProcessJob
         $newEncodings = $responseData['encodings'] ?? [];
         $qualities = $responseData['qualities'] ?? [];
 
-        // Оптимизация: сравниваем только с "мастер" записями
-        $faces = Face::query()
-            ->whereNotNull('encoding')
-            ->whereNull('parent_id')
-            ->where('status', FaceStatusEnum::Ok->value)
-            ->get(['id', 'encoding']);
+        // Получаем всех Person с centroid (один запрос)
+        $persons = Person::whereNotNull('centroid_embedding')
+            ->where('embeddings_count', '>', 0)
+            ->get(['id', 'name', 'centroid_embedding']);
 
         $threshold = config('image.face_api.threshold', 0.6);
+        $affectedPersonIds = collect();
 
         foreach ($newEncodings as $idx => $newEncoding) {
             $quality = $qualities[$idx] ?? null;
@@ -117,6 +113,26 @@ class FaceProcessJob extends BaseProcessJob
             $newFace->face_index = $idx;
             $newFace->quality_score = $quality['total'] ?? null;
             $newFace->quality_details = $quality['details'] ?? null;
+            $newFace->status = FaceStatusEnum::Process->value;
+
+            // Ищем подходящего Person (сравнение в памяти)
+            if ($persons->isNotEmpty()) {
+                $matchingPerson = $this->findBestMatchingPerson($newEncoding, $persons, $threshold);
+
+                if ($matchingPerson) {
+                    $newFace->person_id = $matchingPerson->id;
+                    $newFace->status = FaceStatusEnum::Suggested->value;
+                    $affectedPersonIds->push($matchingPerson->id);
+
+                    Log::info('Auto-matched face to person', [
+                        'image_id' => $image->id,
+                        'face_index' => $idx,
+                        'person_id' => $matchingPerson->id,
+                        'person_name' => $matchingPerson->name,
+                    ]);
+                }
+            }
+
             $newFace->save();
         }
 
@@ -126,48 +142,54 @@ class FaceProcessJob extends BaseProcessJob
             'faces_checked' => 1,
         ]);
 
+        // Пересчитываем centroid для затронутых Person (если были Suggested)
+        // НЕ пересчитываем - centroid обновится только после подтверждения админом
+        // Suggested лица не участвуют в centroid до подтверждения
+
         Log::info('Face processing completed', [
             'image_id' => $image->id,
-            'faces_found' => count($newEncodings)
+            'faces_found' => count($newEncodings),
+            'suggested' => $affectedPersonIds->count(),
         ]);
     }
 
-    private function findMatchingFace(mixed $newEncoding, $faces, float $threshold): ?int
+    /**
+     * Найти наиболее подходящего Person для encoding
+     * Сравнение в памяти (оптимизация)
+     *
+     * Если количество person будет больше 100 - лучше использовать server.py для сравнения
+     */
+    private function findBestMatchingPerson(array $encoding, $persons, float $threshold): ?Person
     {
-        $knownEncodings = $faces->pluck('encoding')->toArray();
+        $bestMatch = null;
+        $bestDistance = PHP_FLOAT_MAX;
 
-        $compareResponse = Http::connectTimeout(self::CONNECT_TIMEOUT)
-            ->timeout(60)
-            ->post(config('image.face_api.url') . '/compare', [
-                'encoding' => $newEncoding,
-                'candidates' => $knownEncodings,
-            ]);
+        foreach ($persons as $person) {
+            $centroid = $person->centroid_embedding;
+            if (!$centroid || !is_array($centroid)) {
+                continue;
+            }
 
-        if (!$compareResponse->successful()) {
-            Log::warning('Face compare failed', ['error' => $compareResponse->body()]);
-            return null;
+            $distance = $this->euclideanDistance($encoding, $centroid);
+
+            if ($distance < $threshold && $distance < $bestDistance) {
+                $bestMatch = $person;
+                $bestDistance = $distance;
+            }
         }
 
-        $distances = $compareResponse->json()['distances'] ?? [];
+        return $bestMatch;
+    }
 
-        if (empty($distances)) {
-            return null;
+    /**
+     * Евклидово расстояние между двумя векторами
+     */
+    private function euclideanDistance(array $a, array $b): float
+    {
+        $sum = 0;
+        for ($i = 0; $i < self::EMBEDDING_SIZE; $i++) {
+            $sum += pow(($a[$i] ?? 0) - ($b[$i] ?? 0), 2);
         }
-
-        $minValue = min($distances);
-
-        if ($minValue < $threshold) {
-            $minIndex = array_search($minValue, $distances);
-            $matchedFace = $faces[$minIndex];
-
-            Log::info('Face match found', [
-                'matched_id' => $matchedFace->id,
-                'distance' => $minValue
-            ]);
-
-            return $matchedFace->id;
-        }
-
-        return null;
+        return sqrt($sum);
     }
 }

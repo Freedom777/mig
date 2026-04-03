@@ -4,12 +4,11 @@ namespace App\Enums;
 
 enum FaceStatusEnum: string
 {
-    case Process = 'process';
-
-    case Check = 'check';
-    case Unknown = 'unknown';
-    case NotFace = 'not_face';
-    case Ok = 'ok';
+    case Process = 'process'; // В обработке (default)
+    case Unknown = 'unknown'; // Неизвестное лицо на фотографии, оно нам не нужно в дальнейшем
+    case NotFace = 'not_face'; // Ложное срабатывание face API, это не лицо
+    case Suggested = 'suggested'; // Найдено предполагаемое лицо
+    case Ok = 'ok'; // Лицо обработано, person_id проставлен
 
     public static function values(): array
     {

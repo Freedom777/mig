@@ -49,13 +49,12 @@ class ApiFaceController extends Controller
         $oldPersonId = $face->person_id;
         $newPersonId = null;
 
-        // Создаём/находим Person
+        // Если статус OK и есть имя — привязываем к Person
         if ($request->status == FaceStatusEnum::Ok->value && $request->name) {
             $person = Person::firstOrCreate(['name' => $request->name]);
             $newPersonId = $person->id;
         }
 
-        // Обновляем Face
         $face->update([
             'status' => $request->status,
             'person_id' => $newPersonId,
@@ -63,18 +62,32 @@ class ApiFaceController extends Controller
 
         $linkedCount = 0;
 
-        // Если привязали к Person
+        // Если подтвердили лицо (Process/Suggested → Ok)
         if ($newPersonId) {
             $person = Person::find($newPersonId);
-
-            // Линкуем похожие лица
-            $linkedCount = $this->personService->linkSimilarFaces($face, $person);
+            $threshold = config('image.face_api.threshold', 0.6);
+            
+            // 1. Линкуем похожие лица (автоматически находит и присваивает)
+            //    linkSimilarFaces внутри вызывает recalculateCentroid
+            $linkedCount = $this->personService->linkSimilarFaces($face, $person, $threshold);
+            
+            // 2. Если это первое лицо Person ИЛИ качество хорошее — пересчитываем centroid
+            //    (linkSimilarFaces уже вызвал recalculateCentroid, но если нашли новые лица — нужно ещё раз)
+            $minQuality = config('image.face_api.min_quality_for_centroid', 50);
+            
+            if ($linkedCount > 0 || $face->quality_score >= $minQuality) {
+                // Пересчёт уже сделан в linkSimilarFaces, но если были новые лица — делаем ещё раз
+                if ($linkedCount > 0) {
+                    $this->personService->recalculateCentroid($person);
+                }
+            }
         }
 
-        // Пересчитываем centroid для старой персоны
+        // Если отвязали от Person (было присвоено, стало Unknown/NotFace/Rejected)
         if ($oldPersonId && $oldPersonId !== $newPersonId) {
             $oldPerson = Person::find($oldPersonId);
             if ($oldPerson) {
+                // Пересчитываем centroid старой персоны (убрали одно лицо)
                 $this->personService->recalculateCentroid($oldPerson);
             }
         }
@@ -95,8 +108,11 @@ class ApiFaceController extends Controller
             $personId = $face->person_id;
             $face->delete();
 
-            // Пересчитать centroid после удаления
-            $this->personService->recalculateCentroid(Person::find($personId));
+            // Пересчитать centroid после удаления лица
+            $person = Person::find($personId);
+            if ($person) {
+                $this->personService->recalculateCentroid($person);
+            }
         } else {
             $face?->delete();
         }
