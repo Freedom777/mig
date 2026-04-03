@@ -95,6 +95,8 @@ class ApiFaceController extends Controller
             }
         }
 
+        $this->personService->updateImagesStatus(collect([$image->id]));
+
         return response()->json([
             'success' => true,
             'linked_faces' => $linkedCount,

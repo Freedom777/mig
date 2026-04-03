@@ -236,7 +236,7 @@ class PersonService
     /**
      * Обновить статус images, если все faces обработаны
      */
-    private function updateImagesStatus(Collection $imageIds): void
+    public function updateImagesStatus(Collection $imageIds): void
     {
         foreach ($imageIds as $imageId) {
             $image = Image::find($imageId);
@@ -246,7 +246,10 @@ class PersonService
 
             // Проверяем есть ли необработанные faces
             $hasUnprocessedFaces = $image->faces()
-                ->where('status', FaceStatusEnum::Process->value)
+                ->where('status', [
+                    FaceStatusEnum::Process->value,
+                    FaceStatusEnum::Suggested->value,
+                ])
                 ->exists();
 
             if (!$hasUnprocessedFaces) {
