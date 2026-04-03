@@ -19,6 +19,13 @@ class FaceSaveRequest extends FormRequest
         return true;
     }
 
+    protected function prepareForValidation()
+    {
+        $this->merge([
+            'name' => $this->name ? trim($this->name) : null,
+        ]);
+    }
+
     public function validationData(): array
     {
         return array_merge($this->all(), [
