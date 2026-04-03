@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Enums\ImageStatusEnum;
 use App\Jobs\FaceProcessJob;
+use App\Jobs\GeolocationProcessJob;
 use App\Jobs\MetadataProcessJob;
 use App\Jobs\ThumbnailProcessJob;
 use App\Models\Image;
@@ -13,30 +14,64 @@ use Symfony\Component\Console\Command\Command as CommandAlias;
 class ImagesReprocess extends Command
 {
     protected $signature = 'images:reprocess
-                            {--no-debug : Reprocess images without debug_filename}
-                            {--faces-failed : Reprocess images where faces_checked = 0}
-                            {--status=* : Reprocess images with specific status (error, process)}
-                            {--limit= : Limit number of images to reprocess}
-                            {--dry-run : Show what would be reprocessed without actually doing it}
-                            {--queue= : Specify which processing queue (faces, metadata, thumbnails, all)}';
+                            {--no-debug : Images without debug_filename}
+                            {--faces-failed : Images where faces_checked = 0}
+                            {--no-metadata : Images without metadata}
+                            {--no-thumbnails : Images without thumbnail_path}
+                            {--has-gps : Images with GPS but without geolocation}
+                            {--status=* : Images with specific status (error, process, recheck)}
+                            {--limit= : Limit number of images}
+                            {--dry-run : Show what would be reprocessed}
+                            {--queue=all : Which queue (faces, metadata, thumbnails, geolocations, all)}';
 
     protected $description = 'Reprocess images with errors or missing data';
 
     public function handle(): int
     {
         $query = Image::query();
+        $filtersApplied = 0;
         
         // Фильтр: без debug_filename
         if ($this->option('no-debug')) {
             $query->where('faces_checked', 1)
                 ->whereNull('debug_filename');
-            $this->info('Filter: images with faces_checked=1 but debug_filename IS NULL');
+            $this->info('Filter: faces_checked=1 AND debug_filename IS NULL');
+            $filtersApplied++;
         }
         
         // Фильтр: faces_checked = 0
         if ($this->option('faces-failed')) {
             $query->where('faces_checked', 0);
-            $this->info('Filter: images with faces_checked=0');
+            $this->info('Filter: faces_checked=0');
+            $filtersApplied++;
+        }
+        
+        // Фильтр: без metadata
+        if ($this->option('no-metadata')) {
+            $query->whereNull('metadata');
+            $this->info('Filter: metadata IS NULL');
+            $filtersApplied++;
+        }
+        
+        // Фильтр: без thumbnails
+        if ($this->option('no-thumbnails')) {
+            $query->whereNull('thumbnail_path');
+            $this->info('Filter: thumbnail_path IS NULL');
+            $filtersApplied++;
+        }
+        
+        // Фильтр: с GPS но без geolocation
+        if ($this->option('has-gps')) {
+            $query->whereNotNull('metadata')
+                ->where(function ($q) {
+                    $q->where(function ($subQ) {
+                        $subQ->whereNotNull('metadata->GPSLatitude')
+                             ->whereNotNull('metadata->GPSLongitude');
+                    })->orWhereNotNull('metadata->GPSPosition');
+                })
+                ->whereNull('image_geolocation_point_id');
+            $this->info('Filter: has GPS data but no geolocation');
+            $filtersApplied++;
         }
         
         // Фильтр: по статусу
@@ -44,6 +79,18 @@ class ImagesReprocess extends Command
         if (!empty($statuses)) {
             $query->whereIn('status', $statuses);
             $this->info('Filter: status IN (' . implode(', ', $statuses) . ')');
+            $filtersApplied++;
+        }
+        
+        // Если не применили ни одного фильтра - показываем подсказку
+        if ($filtersApplied === 0) {
+            $this->warn('No filters specified. Use --help to see available options.');
+            $this->line('');
+            $this->line('Examples:');
+            $this->line('  php artisan images:reprocess --faces-failed');
+            $this->line('  php artisan images:reprocess --no-metadata --queue=metadata');
+            $this->line('  php artisan images:reprocess --status=error --limit=100');
+            return CommandAlias::SUCCESS;
         }
         
         // Лимит
@@ -62,24 +109,34 @@ class ImagesReprocess extends Command
         
         $this->info("Found {$images->count()} images to reprocess");
         
-        // Dry run - показываем что будет обработано
+        // Dry run
         if ($this->option('dry-run')) {
             $this->warn('DRY RUN MODE - nothing will be queued');
+            
+            $tableData = $images->take(20)->map(fn($img) => [
+                $img->id,
+                $img->filename,
+                $img->status,
+                $img->faces_checked ? 'Yes' : 'No',
+                $img->debug_filename ?? '(null)',
+                $img->metadata ? 'Yes' : 'No',
+                $img->thumbnail_path ? 'Yes' : 'No',
+            ])->toArray();
+            
             $this->table(
-                ['ID', 'Filename', 'Status', 'faces_checked', 'debug_filename'],
-                $images->map(fn($img) => [
-                    $img->id,
-                    $img->filename,
-                    $img->status,
-                    $img->faces_checked ? 'Yes' : 'No',
-                    $img->debug_filename ?? '(null)',
-                ])->toArray()
+                ['ID', 'Filename', 'Status', 'Faces', 'Debug', 'Metadata', 'Thumb'],
+                $tableData
             );
+            
+            if ($images->count() > 20) {
+                $this->line("... and " . ($images->count() - 20) . " more");
+            }
+            
             return CommandAlias::SUCCESS;
         }
         
-        // Определяем какие очереди запускать
-        $queueOption = $this->option('queue') ?? 'all';
+        // Определяем очереди
+        $queueOption = $this->option('queue');
         
         $progressBar = $this->output->createProgressBar($images->count());
         $progressBar->start();
@@ -88,32 +145,40 @@ class ImagesReprocess extends Command
             'faces' => 0,
             'metadata' => 0,
             'thumbnails' => 0,
+            'geolocations' => 0,
         ];
         
         foreach ($images as $image) {
-            // Очередь faces
+            // Faces
             if ($queueOption === 'all' || $queueOption === 'faces') {
                 FaceProcessJob::dispatch(['image_id' => $image->id])
                     ->onQueue('faces');
                 $queued['faces']++;
             }
             
-            // Очередь metadata (если нужно)
+            // Metadata
             if ($queueOption === 'all' || $queueOption === 'metadata') {
                 MetadataProcessJob::dispatch(['image_id' => $image->id])
                     ->onQueue('metadatas');
                 $queued['metadata']++;
             }
             
-            // Очередь thumbnails (если нужно)
+            // Thumbnails
             if ($queueOption === 'all' || $queueOption === 'thumbnails') {
                 ThumbnailProcessJob::dispatch(['image_id' => $image->id])
                     ->onQueue('thumbnails');
                 $queued['thumbnails']++;
             }
             
-            // Сбрасываем статус на Process для повторной обработки
-            if ($image->status === ImageStatusEnum::Error->value) {
+            // Geolocations
+            if ($queueOption === 'all' || $queueOption === 'geolocations') {
+                GeolocationProcessJob::dispatch(['image_id' => $image->id])
+                    ->onQueue('geolocations');
+                $queued['geolocations']++;
+            }
+            
+            // Сбрасываем статус error/recheck → process
+            if (in_array($image->status, [ImageStatusEnum::Error->value, ImageStatusEnum::Recheck->value])) {
                 $image->update(['status' => ImageStatusEnum::Process->value]);
             }
             
@@ -124,14 +189,10 @@ class ImagesReprocess extends Command
         $this->newLine(2);
         
         $this->info('Reprocessing queued successfully:');
-        if ($queued['faces'] > 0) {
-            $this->line("  - Faces: {$queued['faces']} jobs");
-        }
-        if ($queued['metadata'] > 0) {
-            $this->line("  - Metadata: {$queued['metadata']} jobs");
-        }
-        if ($queued['thumbnails'] > 0) {
-            $this->line("  - Thumbnails: {$queued['thumbnails']} jobs");
+        foreach ($queued as $queue => $count) {
+            if ($count > 0) {
+                $this->line("  - " . ucfirst($queue) . ": {$count} jobs");
+            }
         }
         
         return CommandAlias::SUCCESS;
