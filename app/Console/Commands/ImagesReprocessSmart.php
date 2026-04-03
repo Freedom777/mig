@@ -68,7 +68,7 @@ class ImagesReprocessSmart extends Command
 
         // Получаем общее количество
         $total = $this->getImagesCount($filter);
-        
+
         if ($total === 0) {
             $this->warn('No images found for processing');
             return CommandAlias::SUCCESS;
@@ -87,7 +87,7 @@ class ImagesReprocessSmart extends Command
 
             // Проверяем сколько осталось
             $remaining = $this->getImagesCount($filter);
-            
+
             if ($remaining === 0) {
                 $this->info("✅ All images processed!");
                 break;
@@ -95,7 +95,7 @@ class ImagesReprocessSmart extends Command
 
             // Проверяем размер очереди
             $queueSize = $this->getQueueSize($queueName);
-            
+
             if ($queueSize === null) {
                 $this->error("❌ Cannot get queue size, aborting");
                 break;
@@ -112,12 +112,11 @@ class ImagesReprocessSmart extends Command
 
             // Отправляем новую партию
             $actualBatchSize = min($batchSize, $remaining, $maxQueueSize - $queueSize);
-            
-            $this->info("🔄 Processing batch #{$this->batches + 1} ({$actualBatchSize} images)...");
-            
+
+            $this->info('🔄 Processing batch #' . ++$this->batches . ' (' . $actualBatchSize . ' images)...');
+
             $this->processBatch($filter, $queueName, $actualBatchSize);
-            
-            $this->batches++;
+
             $this->processed += $actualBatchSize;
 
             // Небольшая пауза перед следующей проверкой
@@ -139,13 +138,13 @@ class ImagesReprocessSmart extends Command
     {
         try {
             $url = "http://{$this->rabbitHost}:{$this->rabbitPort}/api/overview";
-            
+
             $response = Http::timeout(5)
                 ->withBasicAuth($this->rabbitUser, $this->rabbitPass)
                 ->get($url);
 
             return $response->successful();
-            
+
         } catch (\Exception $e) {
             return false;
         }
@@ -159,7 +158,7 @@ class ImagesReprocessSmart extends Command
         try {
             $vhostEncoded = urlencode($this->rabbitVhost);
             $url = "http://{$this->rabbitHost}:{$this->rabbitPort}/api/queues/{$vhostEncoded}/{$queueName}";
-            
+
             $response = Http::timeout(5)
                 ->withBasicAuth($this->rabbitUser, $this->rabbitPass)
                 ->get($url);
@@ -168,11 +167,11 @@ class ImagesReprocessSmart extends Command
                 $data = $response->json();
                 return $data['messages'] ?? 0;
             }
-            
+
             return null;
-            
+
         } catch (\Exception $e) {
-            $this->error("Error getting queue size: " . $e->getMessage());
+            $this->error('Error getting queue size: ' . $e->getMessage());
             return null;
         }
     }
@@ -183,7 +182,7 @@ class ImagesReprocessSmart extends Command
     private function getImagesCount(string $filter): int
     {
         $query = Image::query();
-        
+
         match($filter) {
             'faces-failed' => $query->where('faces_checked', 0),
             'no-debug' => $query->where('faces_checked', 1)->whereNull('debug_filename'),
@@ -209,7 +208,7 @@ class ImagesReprocessSmart extends Command
     private function processBatch(string $filter, string $queueName, int $limit): void
     {
         $query = Image::query();
-        
+
         match($filter) {
             'faces-failed' => $query->where('faces_checked', 0),
             'no-debug' => $query->where('faces_checked', 1)->whereNull('debug_filename'),
@@ -230,7 +229,7 @@ class ImagesReprocessSmart extends Command
 
         foreach ($images as $image) {
             $this->dispatchJob($image, $queueName);
-            
+
             // Сбрасываем статус recheck → process
             if ($image->status === ImageStatusEnum::Recheck->value) {
                 $image->update(['status' => ImageStatusEnum::Process->value]);
