@@ -19,11 +19,15 @@ trait CacheImageTrait
         $lastModified = filemtime($path);
         $etag = md5_file($path);
 
+        // Форматируем заголовки один раз
+        $lastModifiedHeader = gmdate('D, d M Y H:i:s', $lastModified) . ' GMT';
+        $expiresHeader = gmdate('D, d M Y H:i:s', time() + 31536000) . ' GMT';
+
         // Проверка If-Modified-Since
         $ifModifiedSince = request()->header('If-Modified-Since');
         if ($ifModifiedSince && strtotime($ifModifiedSince) >= $lastModified) {
             return response('', 304)
-                ->header('Last-Modified', gmdate('D, d M Y H:i:s', $lastModified) . ' GMT')
+                ->header('Last-Modified', $lastModifiedHeader)
                 ->header('ETag', $etag);
         }
 
@@ -31,7 +35,7 @@ trait CacheImageTrait
         $ifNoneMatch = request()->header('If-None-Match');
         if ($ifNoneMatch && $ifNoneMatch === $etag) {
             return response('', 304)
-                ->header('Last-Modified', gmdate('D, d M Y H:i:s', $lastModified) . ' GMT')
+                ->header('Last-Modified', $lastModifiedHeader)
                 ->header('ETag', $etag);
         }
 
@@ -39,9 +43,9 @@ trait CacheImageTrait
         return response()->file($path, [
             'Content-Type' => $mimeType,
             'Cache-Control' => 'public, max-age=31536000, immutable',
-            'Last-Modified' => gmdate('D, d M Y H:i:s', $lastModified) . ' GMT',
+            'Last-Modified' => $lastModifiedHeader,
             'ETag' => $etag,
-            'Expires' => gmdate('D, d M Y H:i:s', time() + 31536000) . ' GMT',
+            'Expires' => $expiresHeader,
         ]);
     }
 
