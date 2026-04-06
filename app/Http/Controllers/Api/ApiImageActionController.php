@@ -6,6 +6,7 @@ use App\Contracts\ImagePathServiceInterface;
 use App\Contracts\ImageServiceInterface;
 use App\Enums\ImageStatusEnum;
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\Traits\CacheImageTrait;
 use App\Models\Image;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -17,6 +18,8 @@ use Symfony\Component\HttpFoundation\Response;
 
 class ApiImageActionController extends Controller
 {
+    use CacheImageTrait;
+
     public function __construct(
         protected ImageServiceInterface $imageService,
         protected ImagePathServiceInterface $pathService
@@ -35,55 +38,57 @@ class ApiImageActionController extends Controller
         return response()->json([
             'prev' => $prev ? [
                 'id' => $prev->id,
-                'path' => Storage::disk($prev->disk)->exists($prev->path . '/debug/' . $prev->debug_filename),
+                'path' => (bool) $this->pathService->getDebugImagePath($prev),
             ] : null,
             'next' => $next ? [
                 'id' => $next->id,
-                'path' => Storage::disk($next->disk)->exists($next->path . '/debug/' . $next->debug_filename),
+                'path' => (bool) $this->pathService->getDebugImagePath($next),
             ] : null,
         ]);
     }
 
     /**
-     * Show debug image
+     * Show debug image с кешированием
      */
-    public function debug(Image $image): BinaryFileResponse|JsonResponse
+    public function debug(Image $image): BinaryFileResponse|JsonResponse|Response
     {
-        $debugPath = $image->path . '/debug/' . $image->debug_filename;
+        $debugPath = $this->pathService->getDebugImagePath($image);
 
-        if (!Storage::disk($image->disk)->exists($debugPath)) {
-            return response()->json(['error' => 'File not found'], Response::HTTP_NOT_FOUND);
+        if (!$debugPath || !file_exists($debugPath)) {
+            return response()->json(['error' => 'Debug image not found'], Response::HTTP_NOT_FOUND);
         }
 
-        return response()->file(Storage::disk($image->disk)->path($debugPath));
+        return $this->cachedFileResponse($debugPath, 'image/jpeg');
     }
 
     /**
-     * Show original image
+     * Show original image с кешированием
      */
-    public function show(Image $image): BinaryFileResponse|JsonResponse
+    public function show(Image $image): BinaryFileResponse|JsonResponse|Response
     {
-        $path = $image->path . '/' . $image->filename;
+        $fullPath = $this->pathService->getImagePathByObj($image);
 
-        if (!Storage::disk($image->disk)->exists($path)) {
-            return response()->json(['error' => 'File not found'], Response::HTTP_NOT_FOUND);
+        if (!file_exists($fullPath)) {
+            return response()->json(['error' => 'Image not found'], Response::HTTP_NOT_FOUND);
         }
 
-        return response()->file(Storage::disk($image->disk)->path($path));
+        $mimeType = $this->getMimeType($fullPath);
+
+        return $this->cachedFileResponse($fullPath, $mimeType);
     }
 
     /**
-     * Show thumbnail
+     * Show thumbnail с кешированием
      */
-    public function showThumbnail(Image $image): BinaryFileResponse|JsonResponse
+    public function showThumbnail(Image $image): BinaryFileResponse|JsonResponse|Response
     {
         $thumbnailPath = $this->pathService->getExistingThumbnailPath($image);
 
-        if (!$thumbnailPath) {
-            return response()->json(['error' => 'File not found'], Response::HTTP_NOT_FOUND);
+        if (!$thumbnailPath || !file_exists($thumbnailPath)) {
+            return response()->json(['error' => 'Thumbnail not found'], Response::HTTP_NOT_FOUND);
         }
 
-        return response()->file($thumbnailPath);
+        return $this->cachedFileResponse($thumbnailPath, 'image/jpeg');
     }
 
     /**
@@ -94,6 +99,7 @@ class ApiImageActionController extends Controller
         $validated = $request->validate([
             'status' => ['required', new Enum(ImageStatusEnum::class)],
         ]);
+        
         $image->update(['status' => $validated['status']]);
 
         return response()->json(['status' => $image->status]);
@@ -104,8 +110,6 @@ class ApiImageActionController extends Controller
      */
     public function newUpload(Request $request): JsonResponse
     {
-        // dd(config('image.processing.debug'));
-
         $filename = $request->input('filename');
 
         if (!$filename) {
