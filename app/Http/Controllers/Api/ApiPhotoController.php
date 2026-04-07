@@ -7,7 +7,6 @@ use App\Enums\FaceStatusEnum;
 use App\Enums\ImageStatusEnum;
 use App\Http\Controllers\Controller;
 use App\Models\Image;
-use App\Services\ImagePathService;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -56,7 +55,7 @@ GET /api/photos?people[]=Олег&people[]=Анна
          */
 
     public function __construct(
-        private ImagePathServiceInterface $pathService
+        private readonly ImagePathServiceInterface $pathService
     ) {}
 
     public function index(Request $request): JsonResponse
@@ -86,7 +85,7 @@ GET /api/photos?people[]=Олег&people[]=Анна
         // Фильтр по person_id (более точный)
         if ($request->has('person_ids')) {
             $query->whereHas('faces', function ($q) use ($request) {
-                $q->where('status', FaceStatusEnum::Ok->value)
+                $q->where('status', [FaceStatusEnum::Ok->value, FaceStatusEnum::Suggested->value])
                     ->whereIn('person_id', $request->person_ids);
             });
         }

@@ -11,7 +11,6 @@ use App\Models\Image;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rules\Enum;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Symfony\Component\HttpFoundation\Response;
@@ -99,7 +98,7 @@ class ApiImageActionController extends Controller
         $validated = $request->validate([
             'status' => ['required', new Enum(ImageStatusEnum::class)],
         ]);
-        
+
         $image->update(['status' => $validated['status']]);
 
         return response()->json(['status' => $image->status]);
