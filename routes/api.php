@@ -40,6 +40,9 @@ Route::controller(ApiFaceController::class)->prefix('images')->group(function ()
     Route::delete('{image}/faces/{faceIndex}', [ApiFaceController::class, 'remove']);
 });
 
+// Старый алиас для обратной совместимости, image в единственном числе, termux шлёт так
+Route::post('image/new-upload', [ApiImageActionController::class, 'newUpload']);
+
 Route::controller(ApiImageActionController::class)->prefix('images')->group(function () {
     Route::get('{image}/debug', 'debug');
     Route::get('{image}/nearby', 'nearby');
