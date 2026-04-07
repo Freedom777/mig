@@ -63,15 +63,13 @@ class ThumbnailProcessJob extends BaseProcessJob
             $thumbHeight
         );
 
-        $disk = Storage::disk($image->disk);
-        $shortPath = $image->path . '/' . $image->filename;
+        $sourcePath = $pathService->getImagePathByObj($image);
 
-        // Проверяем существование исходного файла
-        if (!$disk->exists($shortPath)) {
-            throw new \RuntimeException('Source image not found: ' . $shortPath);
+        if (!file_exists($sourcePath)) {
+            throw new \RuntimeException('Source image not found: ' . $sourcePath);
         }
 
-        $sourcePath = $disk->path($shortPath);
+        $disk = Storage::disk($image->disk);
         $targetDir = $image->path . '/' . $thumbPath;
 
         // Создаем директорию для thumbnails если её нет
@@ -88,6 +86,15 @@ class ThumbnailProcessJob extends BaseProcessJob
 
         // Проверяем, не существует ли уже thumbnail
         if (file_exists($targetPath)) {
+            // Обновляем БД даже если файл существует, так как могут отсутствовать данные в БД
+            $image->update([
+                'thumbnail_path' => $thumbPath,
+                'thumbnail_filename' => $thumbFilename,
+                'thumbnail_method' => $thumbMethod,
+                'thumbnail_width' => $thumbWidth,
+                'thumbnail_height' => $thumbHeight,
+            ]);
+
             Log::info('Thumbnail already exists, skipping', [
                 'image_id' => $image->id,
                 'target_path' => $targetPath
