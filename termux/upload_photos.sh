@@ -5,10 +5,10 @@ FTP_HOST="91.98.79.139"
 FTP_PORT="2271"
 FTP_USER="ftpfreedom"
 FTP_PASS="ste4enie"
-FTP_PATH="/www/photo/storage/app/private/images"
+FTP_PATH="/www/photo/storage/app/public/images"
 
 # 🔗 API настройки
-API_URL="https://photo.freedomvibe.net/api/image/new-upload"
+API_URL="https://photo.freedomvibe.net/api/images/new-upload"
 
 # 📁 Папка для мониторинга
 WATCH_DIR="/storage/emulated/0/DCIM/Camera"
@@ -31,6 +31,10 @@ PING_COUNT=1                # Количество ping пакетов
 PING_WAIT=5                 # Время ожидания ответа ping (секунды)
 SFTP_CONNECT_TIMEOUT=30     # Таймаут подключения SFTP (секунды)
 
+# 📶 WiFi настройки
+WIFI_WAIT_TIMEOUT=14400     # Время ожидания WiFi (секунды, 4 часа = 14400)
+WIFI_CHECK_INTERVAL=600     # Интервал проверки WiFi (секунды, 10 минут = 600)
+
 # ⏳ Задержки
 FILE_STABILIZE_DELAY=5      # Ожидание стабилизации файла после создания (секунды)
 API_CALL_DELAY=2            # Задержка перед вызовом API после загрузки (секунды)
@@ -42,21 +46,140 @@ API_RETRY_COUNT=10          # Количество попыток подключ
 TEMP_DIR="$HOME/tmp"
 mkdir -p "$TEMP_DIR"
 
+# 📝 Файл для хранения отложенных загрузок
+PENDING_UPLOADS="$TEMP_DIR/pending_uploads.txt"
+touch "$PENDING_UPLOADS"
+
 # 🔒 Блокировка пробуждения
 termux-wake-lock
 
-ask_user_notification() {
+# 🔄 Проверка что скрипт уже не запущен (защита от дублирования)
+SCRIPT_NAME=$(basename "$0")
+RUNNING_COUNT=$(pgrep -fc "$SCRIPT_NAME")
+
+# Если запущено больше 2 процессов (текущий + старый)
+if [ "$RUNNING_COUNT" -gt 2 ]; then
+    termux-toast "⚠️ Upload script already running ($RUNNING_COUNT instances)"
+    exit 0
+fi
+
+# Проверка WiFi подключения
+is_wifi_connected() {
+    local WIFI_INFO
+    WIFI_INFO=$(termux-wifi-connectioninfo 2>/dev/null)
+    
+    if echo "$WIFI_INFO" | grep -q '"ssid"'; then
+        return 0  # WiFi подключен
+    else
+        return 1  # WiFi не подключен
+    fi
+}
+
+# Показать диалог выбора действия
+ask_user_action() {
     local FILE="$1"
     local BASENAME
     BASENAME=$(basename "$FILE")
 
-    # Показываем диалог
-    termux-dialog confirm \
-        -t "📸 Новое фото" \
-        -i "Загрузить $BASENAME на сервер?" 2>&1 | grep -q 'yes'
+    # Показываем radio диалог с четырьмя вариантами
+    local RESPONSE
+    RESPONSE=$(termux-dialog radio \
+        -t "📸 Новое фото: $BASENAME" \
+        -v "Сейчас,WiFi,Позже,Пропустить" 2>&1)
 
-    # grep вернёт 0 если нашёл 'yes', иначе 1
-    return $?
+    # Парсим JSON ответ
+    local INDEX
+    INDEX=$(echo "$RESPONSE" | grep -o '"index":[0-9]*' | cut -d: -f2)
+
+    case "$INDEX" in
+        0) echo "now" ;;      # Сейчас
+        1) echo "wifi" ;;     # Ждать WiFi
+        2) echo "later" ;;    # Позже
+        3) echo "skip" ;;     # Пропустить
+        *) echo "cancel" ;;   # Отмена или ошибка
+    esac
+}
+
+# Добавить файл в очередь отложенных
+add_to_pending() {
+    local FILE="$1"
+    
+    # Проверяем что файл ещё не в очереди
+    if ! grep -Fxq "$FILE" "$PENDING_UPLOADS"; then
+        echo "$FILE" >> "$PENDING_UPLOADS"
+        notify "⏸️ Отложено" "$(basename "$FILE") добавлен в очередь"
+    fi
+}
+
+# Удалить файл из очереди отложенных
+remove_from_pending() {
+    local FILE="$1"
+    local TEMP_FILE="$TEMP_DIR/pending_uploads_tmp.txt"
+    
+    grep -Fxv "$FILE" "$PENDING_UPLOADS" > "$TEMP_FILE" 2>/dev/null || true
+    mv "$TEMP_FILE" "$PENDING_UPLOADS"
+}
+
+# Создать уведомление для отложенного файла
+create_pending_notification() {
+    local FILE="$1"
+    local BASENAME
+    BASENAME=$(basename "$FILE")
+    
+    # ID уведомления = хеш имени файла
+    local NOTIF_ID
+    NOTIF_ID=$(echo "$BASENAME" | md5sum | cut -d' ' -f1 | cut -c1-8)
+    
+    # Путь к триггер-скрипту
+    local TRIGGER_SCRIPT="$TEMP_DIR/upload_trigger.sh"
+    
+    # Создаём уведомление с action кнопкой
+    termux-notification \
+        --id "$NOTIF_ID" \
+        --title "⏸️ Отложено: $BASENAME" \
+        --content "Нажмите для загрузки" \
+        --priority high \
+        --ongoing \
+        --action "$TRIGGER_SCRIPT '$FILE'" \
+        --button1 "Загрузить" \
+        --button1-action "$TRIGGER_SCRIPT '$FILE'" 2>/dev/null
+}
+
+# Удалить уведомление отложенного файла
+remove_pending_notification() {
+    local FILE="$1"
+    local BASENAME
+    BASENAME=$(basename "$FILE")
+    
+    local NOTIF_ID
+    NOTIF_ID=$(echo "$BASENAME" | md5sum | cut -d' ' -f1 | cut -c1-8)
+    
+    termux-notification-remove "$NOTIF_ID" 2>/dev/null
+}
+
+# Ожидание WiFi с таймаутом
+wait_for_wifi() {
+    local FILE="$1"
+    local BASENAME
+    BASENAME=$(basename "$FILE")
+    
+    local ELAPSED=0
+    local MAX_WAIT=$WIFI_WAIT_TIMEOUT
+    
+    notify "📶 Ожидание WiFi" "$BASENAME - жду WiFi макс ${MAX_WAIT}с"
+    
+    while [ $ELAPSED -lt $MAX_WAIT ]; do
+        if is_wifi_connected; then
+            notify "✅ WiFi найден" "$BASENAME - начинаю загрузку"
+            return 0
+        fi
+        
+        sleep "$WIFI_CHECK_INTERVAL"
+        ELAPSED=$((ELAPSED + WIFI_CHECK_INTERVAL))
+    done
+    
+    notify "⏱️ Таймаут WiFi" "$BASENAME - WiFi не найден, отложено"
+    return 1
 }
 
 # Проверка доступности Termux:API с повторными попытками
@@ -180,9 +303,103 @@ EOF
     return 1
 }
 
+# Обработка файла с выбором действия
+process_file_with_choice() {
+    local FILE="$1"
+    local ACTION
+    
+    ACTION=$(ask_user_action "$FILE")
+    
+    case "$ACTION" in
+        "now")
+            # Загрузить сейчас
+            if upload_file "$FILE"; then
+                remove_pending_notification "$FILE"
+            fi
+            ;;
+            
+        "wifi")
+            # Ждать WiFi
+            if wait_for_wifi "$FILE"; then
+                # WiFi найден - загружаем
+                if upload_file "$FILE"; then
+                    remove_pending_notification "$FILE"
+                fi
+            else
+                # Таймаут WiFi - отложить
+                add_to_pending "$FILE"
+                create_pending_notification "$FILE"
+            fi
+            ;;
+            
+        "later")
+            # Отложить
+            add_to_pending "$FILE"
+            create_pending_notification "$FILE"
+            ;;
+            
+        "skip")
+            # Пропустить - не загружать
+            notify "⏭️ Пропущено" "$(basename "$FILE") не будет загружен"
+            ;;
+            
+        "cancel")
+            # Отменено (назад в диалоге)
+            notify "🚫 Отменено" "$(basename "$FILE") действие отменено"
+            ;;
+    esac
+}
+
+# Создаём скрипт-триггер для обработки нажатий на уведомления
+# Используем TEMP_DIR вместо ~/.termux/ (чище и логичнее)
+TRIGGER_SCRIPT="$TEMP_DIR/upload_trigger.sh"
+cat > "$TRIGGER_SCRIPT" <<'TRIGGER_EOF'
+#!/data/data/com.termux/files/usr/bin/bash
+FILE="$1"
+
+if [ -z "$FILE" ] || [ ! -f "$FILE" ]; then
+    termux-toast "Файл не найден: $FILE"
+    exit 1
+fi
+
+# Добавляем файл в очередь обработки
+TRIGGER_FILE="$HOME/tmp/upload_trigger_queue.txt"
+echo "$FILE" >> "$TRIGGER_FILE"
+
+termux-toast "Файл добавлен в очередь: $(basename "$FILE")"
+TRIGGER_EOF
+
+chmod +x "$TRIGGER_SCRIPT"
+
 # Основной цикл мониторинга
 notify "👁️ Мониторинг" "Отслеживаю папку Camera"
 
+# Фоновый процесс для обработки триггеров
+(
+    TRIGGER_FILE="$HOME/tmp/upload_trigger_queue.txt"
+    touch "$TRIGGER_FILE"
+    
+    while true; do
+        if [ -s "$TRIGGER_FILE" ]; then
+            # Читаем первую строку
+            FILE=$(head -n 1 "$TRIGGER_FILE")
+            
+            # Удаляем первую строку
+            TEMP=$(mktemp)
+            tail -n +2 "$TRIGGER_FILE" > "$TEMP"
+            mv "$TEMP" "$TRIGGER_FILE"
+            
+            if [ -f "$FILE" ]; then
+                remove_from_pending "$FILE"
+                process_file_with_choice "$FILE"
+            fi
+        fi
+        
+        sleep 5
+    done
+) &
+
+# Основной цикл inotify
 inotifywait -m --event close_write --event moved_to --event create "$WATCH_DIR" --format '%e %w%f' 2>&1 | while read EVENT FILE
 do
     BASENAME=$(basename "$FILE")
@@ -199,11 +416,7 @@ do
         # Ждём завершения записи файла
         sleep "$FILE_STABILIZE_DELAY"
 
-        # Спрашиваем через уведомление
-        if ask_user_notification "$FILE"; then
-            upload_file "$FILE"
-        else
-            notify "⏭️ Пропущено" "$BASENAME не загружен"
-        fi
+        # Показываем диалог с выбором действия
+        process_file_with_choice "$FILE"
     fi
 done

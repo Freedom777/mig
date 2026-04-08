@@ -103,7 +103,7 @@ def image_to_np_array(img):
     return image
 
 def save_debug_image(image_array, locations, original_path, image_debug_subdir):
-    image_dir = os.path.dirname(original_path)  # /var/www/html/storage/app/private/images
+    image_dir = os.path.dirname(original_path)  # /var/www/html/storage/app/public/images
     debug_dir = os.path.join(image_dir, image_debug_subdir)  # .../images/debug
     os.makedirs(debug_dir, exist_ok=True)
 
