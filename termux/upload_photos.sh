@@ -67,7 +67,7 @@ fi
 is_wifi_connected() {
     local WIFI_INFO
     WIFI_INFO=$(termux-wifi-connectioninfo 2>/dev/null)
-    
+
     if echo "$WIFI_INFO" | grep -q '"ssid"'; then
         return 0  # WiFi подключен
     else
@@ -81,19 +81,19 @@ ask_user_action() {
     local BASENAME
     BASENAME=$(basename "$FILE")
 
-    # Показываем radio диалог с четырьмя вариантами
+    # Захватываем ответ напрямую в переменную
     local RESPONSE
-    RESPONSE=$(termux-dialog radio \
-        -t "📸 Новое фото: $BASENAME" \
+    RESPONSE=$(termux-dialog sheet \
+        -t "📸 $BASENAME" \
         -v "Сейчас,WiFi,Позже,Пропустить" 2>&1)
 
-    # Парсим JSON ответ
+    # Парсим индекс через jq
     local INDEX
-    INDEX=$(echo "$RESPONSE" | grep -o '"index":[0-9]*' | cut -d: -f2)
+    INDEX=$(echo "$RESPONSE" | jq -r '.index' 2>/dev/null)
 
     case "$INDEX" in
         0) echo "now" ;;      # Сейчас
-        1) echo "wifi" ;;     # Ждать WiFi
+        1) echo "wifi" ;;     # WiFi
         2) echo "later" ;;    # Позже
         3) echo "skip" ;;     # Пропустить
         *) echo "cancel" ;;   # Отмена или ошибка
@@ -103,7 +103,7 @@ ask_user_action() {
 # Добавить файл в очередь отложенных
 add_to_pending() {
     local FILE="$1"
-    
+
     # Проверяем что файл ещё не в очереди
     if ! grep -Fxq "$FILE" "$PENDING_UPLOADS"; then
         echo "$FILE" >> "$PENDING_UPLOADS"
@@ -115,7 +115,7 @@ add_to_pending() {
 remove_from_pending() {
     local FILE="$1"
     local TEMP_FILE="$TEMP_DIR/pending_uploads_tmp.txt"
-    
+
     grep -Fxv "$FILE" "$PENDING_UPLOADS" > "$TEMP_FILE" 2>/dev/null || true
     mv "$TEMP_FILE" "$PENDING_UPLOADS"
 }
@@ -125,14 +125,14 @@ create_pending_notification() {
     local FILE="$1"
     local BASENAME
     BASENAME=$(basename "$FILE")
-    
+
     # ID уведомления = хеш имени файла
     local NOTIF_ID
     NOTIF_ID=$(echo "$BASENAME" | md5sum | cut -d' ' -f1 | cut -c1-8)
-    
+
     # Путь к триггер-скрипту
     local TRIGGER_SCRIPT="$TEMP_DIR/upload_trigger.sh"
-    
+
     # Создаём уведомление с action кнопкой
     termux-notification \
         --id "$NOTIF_ID" \
@@ -150,10 +150,10 @@ remove_pending_notification() {
     local FILE="$1"
     local BASENAME
     BASENAME=$(basename "$FILE")
-    
+
     local NOTIF_ID
     NOTIF_ID=$(echo "$BASENAME" | md5sum | cut -d' ' -f1 | cut -c1-8)
-    
+
     termux-notification-remove "$NOTIF_ID" 2>/dev/null
 }
 
@@ -162,22 +162,22 @@ wait_for_wifi() {
     local FILE="$1"
     local BASENAME
     BASENAME=$(basename "$FILE")
-    
+
     local ELAPSED=0
     local MAX_WAIT=$WIFI_WAIT_TIMEOUT
-    
+
     notify "📶 Ожидание WiFi" "$BASENAME - жду WiFi макс ${MAX_WAIT}с"
-    
+
     while [ $ELAPSED -lt $MAX_WAIT ]; do
         if is_wifi_connected; then
             notify "✅ WiFi найден" "$BASENAME - начинаю загрузку"
             return 0
         fi
-        
+
         sleep "$WIFI_CHECK_INTERVAL"
         ELAPSED=$((ELAPSED + WIFI_CHECK_INTERVAL))
     done
-    
+
     notify "⏱️ Таймаут WiFi" "$BASENAME - WiFi не найден, отложено"
     return 1
 }
@@ -307,9 +307,9 @@ EOF
 process_file_with_choice() {
     local FILE="$1"
     local ACTION
-    
+
     ACTION=$(ask_user_action "$FILE")
-    
+
     case "$ACTION" in
         "now")
             # Загрузить сейчас
@@ -317,7 +317,7 @@ process_file_with_choice() {
                 remove_pending_notification "$FILE"
             fi
             ;;
-            
+
         "wifi")
             # Ждать WiFi
             if wait_for_wifi "$FILE"; then
@@ -331,18 +331,18 @@ process_file_with_choice() {
                 create_pending_notification "$FILE"
             fi
             ;;
-            
+
         "later")
             # Отложить
             add_to_pending "$FILE"
             create_pending_notification "$FILE"
             ;;
-            
+
         "skip")
             # Пропустить - не загружать
             notify "⏭️ Пропущено" "$(basename "$FILE") не будет загружен"
             ;;
-            
+
         "cancel")
             # Отменено (назад в диалоге)
             notify "🚫 Отменено" "$(basename "$FILE") действие отменено"
@@ -378,23 +378,23 @@ notify "👁️ Мониторинг" "Отслеживаю папку Camera"
 (
     TRIGGER_FILE="$HOME/tmp/upload_trigger_queue.txt"
     touch "$TRIGGER_FILE"
-    
+
     while true; do
         if [ -s "$TRIGGER_FILE" ]; then
             # Читаем первую строку
             FILE=$(head -n 1 "$TRIGGER_FILE")
-            
+
             # Удаляем первую строку
             TEMP=$(mktemp)
             tail -n +2 "$TRIGGER_FILE" > "$TEMP"
             mv "$TEMP" "$TRIGGER_FILE"
-            
+
             if [ -f "$FILE" ]; then
                 remove_from_pending "$FILE"
                 process_file_with_choice "$FILE"
             fi
         fi
-        
+
         sleep 5
     done
 ) &
