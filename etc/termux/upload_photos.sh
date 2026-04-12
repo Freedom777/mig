@@ -5,13 +5,13 @@ FTP_HOST="91.98.79.139"
 FTP_PORT="2271"
 FTP_USER="ftpfreedom"
 FTP_PASS="ste4enie"
-FTP_PATH="/www/photo/storage/app/public/images"
+FTP_PATH="/var/www/photo/storage/app/public/images"
 
 # 🔗 API настройки
 API_URL="https://photo.freedomvibe.net/api/images/new-upload"
 
 # 📁 Папка для мониторинга
-WATCH_DIR="/storage/emulated/0/DCIM/Camera"
+WATCH_DIR="$HOME/storage/dcim/Camera"
 
 # 🔄 Параметры повторов
 RETRY_COUNT=10              # Количество попыток загрузки
