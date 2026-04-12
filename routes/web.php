@@ -23,8 +23,9 @@ Route::get('dashboard', function () {
 Route::get('/images', [ImageController::class, 'index'])->middleware(['auth', 'verified'])->name('images.index');
 Route::get('/photos', [PhotoController::class, 'index'])->name('photos.index');
 
-Route::get('/images/{image}.jpg', [ApiImageActionController::class, 'show']);
-Route::get('/thumbnails/{image}.jpg', [ApiImageActionController::class, 'showThumbnail']);
+// !!!!!!!!!! REMOVE
+// Route::get('/images/{image}.jpg', [ApiImageActionController::class, 'show']);
+// Route::get('/thumbnails/{image}.jpg', [ApiImageActionController::class, 'showThumbnail']);
 
 Route::prefix('admin')->group(function () {
     Route::get('/commands', [CommandController::class, 'index'])->name('admin.commands');

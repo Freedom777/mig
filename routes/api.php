@@ -19,7 +19,9 @@ Route::get('/photos', [ApiPhotoController::class, 'index']);
 Route::post('/photos', [ApiPhotoController::class, 'index']);
 Route::get('/filters', [ApiFilterController::class, 'index']);
 
-Route::get('/thumbnail/{id}.jpg', [ApiImageActionController::class, 'showThumbnail']);
+
+// !!!!!!!!!! REMOVE
+// Route::get('/thumbnail/{id}.jpg', [ApiImageActionController::class, 'showThumbnail']);
 
 // Группа для API с префиксом и middleware (например, для авторизации)
 // Route::middleware(['api', 'auth:sanctum'])->group(function () {
