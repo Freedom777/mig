@@ -64,6 +64,9 @@ class ImagePathService implements ImagePathServiceInterface
      */
     public function getThumbnailUrl(Image $image): string
     {
+        if (empty($image->thumbnail_filename)) {
+            return asset('placeholder-thumbnail.svg');
+        }
         return config('app.image_api_url') . '/' . config('image.paths.thumbnails') . '/' . $image->thumbnail_filename;
     }
 

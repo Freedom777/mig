@@ -1,0 +1,27 @@
+<svg width="300" height="200" xmlns="http://www.w3.org/2000/svg">
+    <!-- Градиентный фон -->
+    <defs>
+        <linearGradient id="bgGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" style="stop-color:#667eea;stop-opacity:1" />
+            <stop offset="100%" style="stop-color:#764ba2;stop-opacity:1" />
+        </linearGradient>
+    </defs>
+    
+    <!-- Фон -->
+    <rect width="300" height="200" fill="url(#bgGradient)" />
+    
+    <!-- Иконка изображения -->
+    <g transform="translate(150, 70)">
+        <!-- Рамка картинки -->
+        <rect x="-30" y="-25" width="60" height="45" fill="none" stroke="white" stroke-width="3" rx="3" />
+        <!-- Солнце -->
+        <circle cx="-15" cy="-10" r="6" fill="white" opacity="0.9" />
+        <!-- Гора -->
+        <path d="M -25,15 L -10,-5 L 5,15 Z" fill="white" opacity="0.9" />
+        <path d="M 0,15 L 15,-2 L 30,15 Z" fill="white" opacity="0.7" />
+    </g>
+    
+    <!-- Текст -->
+    <text x="150" y="150" font-family="Arial, sans-serif" font-size="18" font-weight="bold" 
+          fill="white" text-anchor="middle">Нет миниатюры</text>
+</svg>
