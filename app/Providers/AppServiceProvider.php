@@ -24,9 +24,6 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        // Принудительно HTTPS для всех URL
-        \Illuminate\Support\Facades\URL::forceScheme('https');
-
         // Set default SRID for Geolocations
         EloquentSpatial::setDefaultSrid(Srid::WGS84);
     }
