@@ -106,4 +106,17 @@ return [
         'threshold' => env('FACE_RECOGNITION_THRESHOLD', 0.6),
         'min_quality_for_centroid' => env('FACE_MIN_QUALITY_FOR_CENTROID', 50),
     ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | WEBP Qualities
+    |--------------------------------------------------------------------------
+    */
+    'webp' => [
+        'quality' => [
+            'image' => env('WEBP_QUALITY_IMAGE', 90),
+            'thumbnail' => env('WEBP_QUALITY_THUMBNAIL', 85),
+            'debug' => env('WEBP_QUALITY_DEBUG', 80),
+        ],
+    ],
 ];

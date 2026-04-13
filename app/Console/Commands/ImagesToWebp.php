@@ -17,9 +17,9 @@ class ImagesToWebp extends Command
     protected $signature = 'images:convert-to-webp
                             {--dry-run : Показать что будет сконвертировано без реальной конвертации}
                             {--limit= : Ограничить количество изображений для конвертации}
-                            {--quality-image=90 : Качество WebP для оригинальных изображений}
-                            {--quality-thumbnail=85 : Качество WebP для миниатюр}
-                            {--quality-debug=80 : Качество WebP для debug изображений}';
+                            {--quality-image= : Качество WebP для оригинальных изображений (по умолчанию из config)}
+                            {--quality-thumbnail= : Качество WebP для миниатюр (по умолчанию из config)}
+                            {--quality-debug= : Качество WebP для debug изображений (по умолчанию из config)}';
 
     /**
      * The console command description.
@@ -57,9 +57,19 @@ class ImagesToWebp extends Command
     {
         $isDryRun = $this->option('dry-run');
         $limit = $this->option('limit');
-        $qualityImage = (int) $this->option('quality-image');
-        $qualityThumbnail = (int) $this->option('quality-thumbnail');
-        $qualityDebug = (int) $this->option('quality-debug');
+
+        // Берём качество из конфига если не указано в опциях
+        $qualityImage = $this->option('quality-image')
+            ? (int) $this->option('quality-image')
+            : config('image.webp.quality.image', 90);
+
+        $qualityThumbnail = $this->option('quality-thumbnail')
+            ? (int) $this->option('quality-thumbnail')
+            : config('image.webp.quality.thumbnail', 85);
+
+        $qualityDebug = $this->option('quality-debug')
+            ? (int) $this->option('quality-debug')
+            : config('image.webp.quality.debug', 80);
 
         $this->info('🚀 Начинаю конвертацию изображений в WebP...');
 

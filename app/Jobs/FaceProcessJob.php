@@ -11,6 +11,8 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use Intervention\Image\Drivers\Imagick\Driver;
+use Intervention\Image\ImageManager;
 
 class FaceProcessJob extends BaseProcessJob
 {
@@ -137,8 +139,24 @@ class FaceProcessJob extends BaseProcessJob
         }
 
         $debugPath = $responseData['debug_image_path'] ?? null;
+        $debugFilename = null;
+
+        // НОВОЕ: Конвертировать debug JPG → WebP
+        if ($debugPath && file_exists($debugPath)) {
+            try {
+                $debugFilename = $this->convertDebugToWebP($debugPath, $pathService);
+            } catch (\Exception $e) {
+                Log::warning('Failed to convert debug image to WebP', [
+                    'image_id' => $image->id,
+                    'error' => $e->getMessage()
+                ]);
+                // Оставляем оригинальное имя если конвертация не удалась
+                $debugFilename = basename($debugPath);
+            }
+        }
+
         $image->update([
-            'debug_filename' => $debugPath ? basename($debugPath) : null,
+            'debug_filename' => $debugFilename,
             'faces_checked' => 1,
         ]);
 
@@ -191,5 +209,50 @@ class FaceProcessJob extends BaseProcessJob
             $sum += pow(($a[$i] ?? 0) - ($b[$i] ?? 0), 2);
         }
         return sqrt($sum);
+    }
+
+    /**
+     * Конвертировать debug изображение JPG → WebP
+     */
+    private function convertDebugToWebP(string $debugPath, ImagePathServiceInterface $pathService): string
+    {
+        $extension = strtolower(pathinfo($debugPath, PATHINFO_EXTENSION));
+
+        // Если уже WebP - возвращаем имя
+        if ($extension === 'webp') {
+            return basename($debugPath);
+        }
+
+        // Если не JPG - не конвертируем
+        if (!in_array($extension, ['jpg', 'jpeg'])) {
+            return basename($debugPath);
+        }
+
+        // Генерируем WebP имя
+        $webpFilename = pathinfo($debugPath, PATHINFO_FILENAME) . '.webp';
+        $webpPath = dirname($debugPath) . '/' . $webpFilename;
+
+        // Создаём ImageManager
+        $manager = new ImageManager(new Driver());
+
+        // Загружаем изображение
+        $img = $manager->read($debugPath);
+
+        // Конвертируем в WebP (quality из конфига)
+        $quality = config('image.webp.quality.debug', 80);
+        $webpData = $img->toWebp(quality: $quality);
+
+        // Сохраняем WebP
+        file_put_contents($webpPath, (string) $webpData);
+
+        // Удаляем оригинальный JPG
+        @unlink($debugPath);
+
+        Log::info('Converted debug image to WebP', [
+            'original' => basename($debugPath),
+            'webp' => $webpFilename
+        ]);
+
+        return $webpFilename;
     }
 }

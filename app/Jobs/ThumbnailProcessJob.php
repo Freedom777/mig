@@ -56,12 +56,13 @@ class ThumbnailProcessJob extends BaseProcessJob
 
         // Генерируем пути через PathService
         $thumbPath = $pathService->getThumbnailSubdir($thumbWidth, $thumbHeight);
-        $thumbFilename = $pathService->getThumbnailFilename(
-            $image->filename,
-            $thumbMethod,
-            $thumbWidth,
-            $thumbHeight
-        );
+
+        // ИЗМЕНЕНО: Генерируем WebP имя файла
+        $originalFilename = $image->filename;
+        $webpFilename = pathinfo($originalFilename, PATHINFO_FILENAME) .
+            "_{$thumbMethod}_{$thumbWidth}x{$thumbHeight}.webp";
+
+        $thumbFilename = $webpFilename;
 
         $sourcePath = $pathService->getImagePathByObj($image);
 
@@ -111,7 +112,11 @@ class ThumbnailProcessJob extends BaseProcessJob
             }
 
             $img->{$thumbMethod}($thumbWidth, $thumbHeight);
-            $img->save($targetPath);
+
+            // ИЗМЕНЕНО: Сохраняем как WebP с quality из конфига
+            $quality = config('image.webp.quality.thumbnail', 85);
+            $webpData = $img->toWebp(quality: $quality);
+            file_put_contents($targetPath, (string) $webpData);
 
             if (!file_exists($targetPath)) {
                 throw new \RuntimeException('Thumbnail file was not created: ' . $targetPath);

@@ -136,8 +136,9 @@ class ImageService implements ImageServiceInterface
             // Загружаем изображение
             $img = $manager->read($absolutePath);
 
-            // Конвертируем в WebP (quality 90)
-            $webpData = $img->toWebp(quality: 90);
+            // Конвертируем в WebP (quality из конфига)
+            $quality = config('image.webp.quality.image', 90);
+            $webpData = $img->toWebp(quality: $quality);
 
             // Сохраняем WebP
             $storage->put($webpRelativePath, (string) $webpData);
