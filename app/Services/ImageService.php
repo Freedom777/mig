@@ -7,6 +7,9 @@ use App\Contracts\ImageRepositoryInterface;
 use App\Contracts\ImageServiceInterface;
 use App\Models\Image;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
+use Intervention\Image\ImageManager;
+use Intervention\Image\Drivers\Gd\Driver;
 
 class ImageService implements ImageServiceInterface
 {
@@ -45,8 +48,11 @@ class ImageService implements ImageServiceInterface
             ];
         }
 
-        // Подготавливаем данные
-        $preparedData = $this->imageRepository->prepareImageData($disk, $path, $filename);
+        // НОВОЕ: Конвертировать JPG → WebP если нужно
+        $finalFilename = $this->convertToWebPIfNeeded($disk, $path, $filename);
+
+        // Подготавливаем данные (с WebP filename)
+        $preparedData = $this->imageRepository->prepareImageData($disk, $path, $finalFilename);
 
         // Создаём/обновляем запись в БД
         $image = $this->imageRepository->updateOrCreate($preparedData);
@@ -55,7 +61,7 @@ class ImageService implements ImageServiceInterface
             Log::error('Failed to insert image', [
                 'disk' => $disk,
                 'path' => $path,
-                'filename' => $filename
+                'filename' => $finalFilename
             ]);
 
             return [
@@ -67,7 +73,7 @@ class ImageService implements ImageServiceInterface
 
         Log::info('Image inserted successfully', [
             'image_id' => $image->id,
-            'filename' => $filename
+            'filename' => $finalFilename
         ]);
 
         // Ставим в очередь все джобы
@@ -81,6 +87,82 @@ class ImageService implements ImageServiceInterface
             'message' => 'Image uploaded and processing started',
             'queue_statuses' => $queueStatuses,
         ];
+    }
+
+    /**
+     * Конвертировать JPG → WebP если это JPG файл
+     * Возвращает финальное имя файла (WebP)
+     */
+    private function convertToWebPIfNeeded(string $disk, string $path, string $filename): string
+    {
+        $extension = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
+
+        // Если уже WebP - ничего не делаем
+        if ($extension === 'webp') {
+            return $filename;
+        }
+
+        // Если не JPG/JPEG - тоже ничего не делаем (на будущее для PNG)
+        if (!in_array($extension, ['jpg', 'jpeg'])) {
+            return $filename;
+        }
+
+        Log::info('Converting JPG to WebP', [
+            'disk' => $disk,
+            'path' => $path,
+            'filename' => $filename
+        ]);
+
+        try {
+            $storage = Storage::disk($disk);
+            $relativePath = $path . '/' . $filename;
+            $absolutePath = $storage->path($relativePath);
+
+            // Проверяем что файл существует
+            if (!file_exists($absolutePath)) {
+                Log::error('File not found for WebP conversion', [
+                    'path' => $absolutePath
+                ]);
+                return $filename; // Возвращаем оригинальное имя
+            }
+
+            // Генерируем WebP имя
+            $webpFilename = pathinfo($filename, PATHINFO_FILENAME) . '.webp';
+            $webpRelativePath = $path . '/' . $webpFilename;
+
+            // Создаём ImageManager
+            $manager = new ImageManager(new Driver());
+
+            // Загружаем изображение
+            $img = $manager->read($absolutePath);
+
+            // Конвертируем в WebP (quality 90)
+            $webpData = $img->toWebp(quality: 90);
+
+            // Сохраняем WebP
+            $storage->put($webpRelativePath, (string) $webpData);
+
+            // Удаляем оригинальный JPG
+            $storage->delete($relativePath);
+
+            Log::info('Successfully converted to WebP', [
+                'original' => $filename,
+                'webp' => $webpFilename,
+                'original_size' => filesize($absolutePath),
+                'webp_size' => $storage->size($webpRelativePath)
+            ]);
+
+            return $webpFilename;
+
+        } catch (\Exception $e) {
+            Log::error('Failed to convert to WebP', [
+                'filename' => $filename,
+                'error' => $e->getMessage()
+            ]);
+
+            // В случае ошибки возвращаем оригинальное имя
+            return $filename;
+        }
     }
 
     /**
