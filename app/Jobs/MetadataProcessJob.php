@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Contracts\ImageQueueDispatcherInterface;
+use App\Models\Geolocation;
 use App\Models\Image;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
@@ -66,9 +67,8 @@ class MetadataProcessJob extends BaseProcessJob
             return;
         }
 
-        $hasGps = isset($metadata['GPS']) &&
-            isset($metadata['GPS']['GPSLatitude']) &&
-            isset($metadata['GPS']['GPSLongitude']);
+        // Используем Geolocation::hasGeodata для проверки GPS (поддерживает оба формата)
+        $hasGps = Geolocation::hasGeodata($metadata);
 
         Log::info('Metadata extracted from database', [
             'image_id' => $image->id,
