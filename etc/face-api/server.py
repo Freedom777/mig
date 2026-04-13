@@ -159,7 +159,7 @@ async def encode_faces(
     image_debug_subdir: str = Form("debug")
 ):
     start = time.time()
-    allowed_extensions = {'jpg', 'jpeg', 'png'}
+    allowed_extensions = {'jpg', 'jpeg', 'png', 'webp'}
     filename = image.filename
     file_ext = filename.rsplit('.', 1)[-1].lower() if '.' in filename else ''
 

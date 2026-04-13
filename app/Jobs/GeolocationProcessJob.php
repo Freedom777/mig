@@ -60,14 +60,24 @@ class GeolocationProcessJob extends BaseProcessJob
             return;
         }
 
+        // Декодируем JSON metadata в массив
+        $metadata = is_string($image->metadata)
+            ? json_decode($image->metadata, true)
+            : $image->metadata;
+
+        if (!$metadata) {
+            Log::error('Failed to decode metadata JSON', ['image_id' => $image->id]);
+            return;
+        }
+
         // Проверяем наличие GPS данных
-        if (!Geolocation::hasGeodata($image->metadata)) {
+        if (!Geolocation::hasGeodata($metadata)) {
             Log::info('No GPS data in metadata', ['image_id' => $image->id]);
             return;
         }
 
         // Извлекаем координаты
-        [$latitude, $longitude] = Geolocation::extractCoordinates($image->metadata);
+        [$latitude, $longitude] = Geolocation::extractCoordinates($metadata);
 
         if (!$latitude || !$longitude || !is_float($latitude) || !is_float($longitude)) {
             Log::warning('Invalid coordinates extracted', [
