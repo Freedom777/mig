@@ -3,9 +3,10 @@
 namespace App\Console\Commands;
 
 use App\Models\Image;
+use App\Services\ImagePathService;
 use Illuminate\Console\Command;
 use Intervention\Image\ImageManager;
-use Intervention\Image\Drivers\Imagick\Driver;
+use Intervention\Image\Drivers\Gd\Driver;
 use Illuminate\Support\Facades\Storage;
 
 class ImagesToWebp extends Command
@@ -34,6 +35,20 @@ class ImagesToWebp extends Command
     private int $convertedDebug = 0;
     private int $errors = 0;
     private int $freedSpace = 0;
+
+    /**
+     * Image path service
+     */
+    private ImagePathService $pathService;
+
+    /**
+     * Constructor
+     */
+    public function __construct(ImagePathService $pathService)
+    {
+        parent::__construct();
+        $this->pathService = $pathService;
+    }
 
     /**
      * Execute the console command.
@@ -108,58 +123,51 @@ class ImagesToWebp extends Command
      */
     private function convertImage(Image $image, int $qualityImage, int $qualityThumbnail, int $qualityDebug, bool $isDryRun): void
     {
-        $disk = Storage::disk(config('image.paths.disk'));
-        $imagesPath = config('image.paths.images');
-        $thumbnailsPath = config('image.paths.thumbnails');
-        $debugPath = config('image.paths.debug');
+        $disk = Storage::disk($image->disk);
 
         // 1. Конвертировать основное изображение
-        $originalPath = "{$imagesPath}/{$image->filename}";
-        $newFilename = $this->changeExtension($image->filename, 'webp');
-        $newPath = "{$imagesPath}/{$newFilename}";
+        $originalFullPath = $this->pathService->getImagePathByObj($image);
+        $originalRelativePath = $image->path . '/' . $image->filename;
 
-        if ($disk->exists($originalPath)) {
+        if (file_exists($originalFullPath)) {
+            $newFilename = $this->changeExtension($image->filename, 'webp');
+            $newRelativePath = $image->path . '/' . $newFilename;
+
             if (!$isDryRun) {
-                $this->convertFile($disk, $originalPath, $newPath, $qualityImage);
-
-                // Обновить filename в БД
+                $this->convertFile($disk, $originalFullPath, $originalRelativePath, $newRelativePath, $qualityImage);
                 $image->filename = $newFilename;
             }
             $this->convertedImages++;
         }
 
         // 2. Конвертировать thumbnail
-        if ($image->thumbnail_filename) {
-            $thumbOriginalPath = "{$thumbnailsPath}/{$image->thumbnail_filename}";
+        $existingThumbPath = $this->pathService->getExistingThumbnailPath($image);
+
+        if ($existingThumbPath && file_exists($existingThumbPath)) {
+            $thumbRelativePath = $image->path . '/' . $image->thumbnail_path . '/' . $image->thumbnail_filename;
             $newThumbFilename = $this->changeExtension($image->thumbnail_filename, 'webp');
-            $newThumbPath = "{$thumbnailsPath}/{$newThumbFilename}";
+            $newThumbRelativePath = $image->path . '/' . $image->thumbnail_path . '/' . $newThumbFilename;
 
-            if ($disk->exists($thumbOriginalPath)) {
-                if (!$isDryRun) {
-                    $this->convertFile($disk, $thumbOriginalPath, $newThumbPath, $qualityThumbnail);
-
-                    // Обновить thumbnail_filename в БД
-                    $image->thumbnail_filename = $newThumbFilename;
-                }
-                $this->convertedThumbnails++;
+            if (!$isDryRun) {
+                $this->convertFile($disk, $existingThumbPath, $thumbRelativePath, $newThumbRelativePath, $qualityThumbnail);
+                $image->thumbnail_filename = $newThumbFilename;
             }
+            $this->convertedThumbnails++;
         }
 
         // 3. Конвертировать debug image
-        if ($image->debug_filename) {
-            $debugOriginalPath = "{$debugPath}/{$image->debug_filename}";
+        $debugPath = $this->pathService->getDebugImagePath($image);
+
+        if ($debugPath && file_exists($debugPath)) {
+            $debugRelativePath = $image->path . '/' . $this->pathService->getImageDebugSubdir() . '/' . $image->debug_filename;
             $newDebugFilename = $this->changeExtension($image->debug_filename, 'webp');
-            $newDebugPath = "{$debugPath}/{$newDebugFilename}";
+            $newDebugRelativePath = $image->path . '/' . $this->pathService->getImageDebugSubdir() . '/' . $newDebugFilename;
 
-            if ($disk->exists($debugOriginalPath)) {
-                if (!$isDryRun) {
-                    $this->convertFile($disk, $debugOriginalPath, $newDebugPath, $qualityDebug);
-
-                    // Обновить debug_filename в БД
-                    $image->debug_filename = $newDebugFilename;
-                }
-                $this->convertedDebug++;
+            if (!$isDryRun) {
+                $this->convertFile($disk, $debugPath, $debugRelativePath, $newDebugRelativePath, $qualityDebug);
+                $image->debug_filename = $newDebugFilename;
             }
+            $this->convertedDebug++;
         }
 
         // Сохранить изменения в БД
@@ -171,28 +179,27 @@ class ImagesToWebp extends Command
     /**
      * Конвертировать файл JPG → WebP
      */
-    private function convertFile($disk, string $sourcePath, string $destinationPath, int $quality): void
+    private function convertFile($disk, string $sourceAbsolutePath, string $sourceRelativePath, string $destinationRelativePath, int $quality): void
     {
         // Получить размер оригинального файла
-        $originalSize = $disk->size($sourcePath);
+        $originalSize = $disk->size($sourceRelativePath);
 
         // Создать ImageManager
         $manager = new ImageManager(new Driver());
 
-        // Загрузить изображение
-        $fullSourcePath = $disk->path($sourcePath);
-        $img = $manager->read($fullSourcePath);
+        // Загрузить изображение (используем абсолютный путь)
+        $img = $manager->read($sourceAbsolutePath);
 
         // Сохранить как WebP
         $webpData = $img->toWebp(quality: $quality);
-        $disk->put($destinationPath, (string) $webpData);
+        $disk->put($destinationRelativePath, (string) $webpData);
 
         // Получить размер нового файла
-        $newSize = $disk->size($destinationPath);
+        $newSize = $disk->size($destinationRelativePath);
         $this->freedSpace += ($originalSize - $newSize);
 
         // Удалить оригинальный JPG файл
-        $disk->delete($sourcePath);
+        $disk->delete($sourceRelativePath);
     }
 
     /**
