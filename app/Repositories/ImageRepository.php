@@ -17,7 +17,7 @@ class ImageRepository implements ImageRepositoryInterface
         $diskInstance = Storage::disk($disk);
         $filePath = $diskInstance->path($path) . '/' . $filename;
 
-        return [
+        $data = [
             'source_disk' => $disk,
             'source_path' => $path,
             'source_filename' => $filename,
@@ -25,6 +25,17 @@ class ImageRepository implements ImageRepositoryInterface
             'created_at_file' => date('Y-m-d H:i:s', filectime($filePath)),
             'updated_at_file' => date('Y-m-d H:i:s', filemtime($filePath)),
         ];
+
+        // Читаем EXIF из JPG/JPEG
+        $extension = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
+        if (in_array($extension, ['jpg', 'jpeg']) && file_exists($filePath)) {
+            $exif = @exif_read_data($filePath, null, true);
+            if ($exif) {
+                $data['metadata'] = json_encode($exif);
+            }
+        }
+
+        return $data;
     }
 
     /**
@@ -47,17 +58,24 @@ class ImageRepository implements ImageRepositoryInterface
         $imagePath = $imageData['source_path'] . '/' . $imageData['source_filename'];
 
         try {
+            $updateData = [
+                'size' => $imageData['size'],
+                'created_at_file' => $imageData['created_at_file'],
+                'updated_at_file' => $imageData['updated_at_file'],
+            ];
+
+            // Добавляем metadata если есть
+            if (isset($imageData['metadata'])) {
+                $updateData['metadata'] = $imageData['metadata'];
+            }
+
             $image = Image::updateOrCreate(
                 [
                     'disk' => $imageData['source_disk'],
                     'path' => $imageData['source_path'],
                     'filename' => $imageData['source_filename']
                 ],
-                [
-                    'size' => $imageData['size'],
-                    'created_at_file' => $imageData['created_at_file'],
-                    'updated_at_file' => $imageData['updated_at_file'],
-                ]
+                $updateData
             );
 
             Log::info('Image processed', ['path' => $imagePath, 'id' => $image->id]);

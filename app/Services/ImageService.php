@@ -48,13 +48,18 @@ class ImageService implements ImageServiceInterface
             ];
         }
 
-        // НОВОЕ: Конвертировать JPG → WebP если нужно
+        // 1. Подготавливаем данные (читаем EXIF из оригинального JPG)
+        $preparedData = $this->imageRepository->prepareImageData($disk, $path, $filename);
+
+        // 2. Конвертировать JPG → WebP если нужно
         $finalFilename = $this->convertToWebPIfNeeded($disk, $path, $filename);
 
-        // Подготавливаем данные (с WebP filename)
-        $preparedData = $this->imageRepository->prepareImageData($disk, $path, $finalFilename);
+        // 3. Обновляем filename в данных (если был сконвертирован)
+        if ($finalFilename !== $filename) {
+            $preparedData['source_filename'] = $finalFilename;
+        }
 
-        // Создаём/обновляем запись в БД
+        // 4. Создаём/обновляем запись в БД
         $image = $this->imageRepository->updateOrCreate($preparedData);
 
         if (!$image) {
@@ -76,7 +81,7 @@ class ImageService implements ImageServiceInterface
             'filename' => $finalFilename
         ]);
 
-        // Ставим в очередь все джобы
+        // 5. Ставим в очередь все джобы
         $queueStatuses = $this->queueDispatcher->dispatchAll($image);
 
         Log::info('All jobs queued', ['image_id' => $image->id]);
@@ -149,7 +154,6 @@ class ImageService implements ImageServiceInterface
             Log::info('Successfully converted to WebP', [
                 'original' => $filename,
                 'webp' => $webpFilename,
-                'original_size' => filesize($absolutePath),
                 'webp_size' => $storage->size($webpRelativePath)
             ]);
 

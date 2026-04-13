@@ -3,12 +3,9 @@
 namespace App\Jobs;
 
 use App\Contracts\ImageQueueDispatcherInterface;
-use App\Models\Geolocation;
 use App\Models\Image;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Storage;
-use Symfony\Component\Process\Process;
 
 class MetadataProcessJob extends BaseProcessJob
 {
@@ -49,30 +46,31 @@ class MetadataProcessJob extends BaseProcessJob
     {
         $image = Image::findOrFail($this->taskData['image_id']);
 
-        $disk = Storage::disk($image->disk);
-        $sourcePath = $disk->path($image->path . '/' . $image->filename);
-
-        $process = new Process(['exiftool', '-json', '-n', $sourcePath]);
-        $process->run();
-
-        if (!$process->isSuccessful()) {
-            Log::error('ExifTool process failed', [
-                'image_id' => $image->id,
-                'path' => $sourcePath,
-                'error' => $process->getErrorOutput()
+        // Проверяем есть ли уже metadata в БД
+        if (empty($image->metadata)) {
+            Log::warning('No metadata found in database', [
+                'image_id' => $image->id
             ]);
-            throw new \Exception('ExifTool process failed');
+            return;
         }
 
-        $output = $process->getOutput();
-        $data = json_decode($output, true);
-        $metadata = $data[0] ?? null;
-        $hasGps = $metadata ? Geolocation::hasGeodata($metadata) : false;
+        // Парсим metadata из JSON
+        $metadata = is_string($image->metadata)
+            ? json_decode($image->metadata, true)
+            : $image->metadata;
 
-        // Сохраняем метадату в базу
-        $image->update(['metadata' => $metadata]);
+        if (!$metadata) {
+            Log::error('Failed to decode metadata JSON', [
+                'image_id' => $image->id
+            ]);
+            return;
+        }
 
-        Log::info('Metadata extracted successfully', [
+        $hasGps = isset($metadata['GPS']) &&
+            isset($metadata['GPS']['GPSLatitude']) &&
+            isset($metadata['GPS']['GPSLongitude']);
+
+        Log::info('Metadata extracted from database', [
             'image_id' => $image->id,
             'has_gps' => $hasGps
         ]);
