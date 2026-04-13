@@ -114,7 +114,7 @@ class ThumbnailProcessJob extends BaseProcessJob
             $img->{$thumbMethod}($thumbWidth, $thumbHeight);
 
             // ИЗМЕНЕНО: Сохраняем как WebP с quality из конфига
-            $quality = config('image.webp.quality.thumbnail', 85);
+            $quality = (int) config('image.webp.quality.thumbnail', 85);
             $webpData = $img->toWebp(quality: $quality);
             file_put_contents($targetPath, (string) $webpData);
 

@@ -9,7 +9,7 @@ use App\Models\Image;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Intervention\Image\ImageManager;
-use Intervention\Image\Drivers\Gd\Driver;
+use Intervention\Image\Drivers\Imagick\Driver;
 
 class ImageService implements ImageServiceInterface
 {
@@ -142,7 +142,7 @@ class ImageService implements ImageServiceInterface
             $img = $manager->read($absolutePath);
 
             // Конвертируем в WebP (quality из конфига)
-            $quality = config('image.webp.quality.image', 90);
+            $quality = (int) config('image.webp.quality.image', 90);
             $webpData = $img->toWebp(quality: $quality);
 
             // Сохраняем WebP

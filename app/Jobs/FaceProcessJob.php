@@ -11,8 +11,8 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
-use Intervention\Image\Drivers\Imagick\Driver;
 use Intervention\Image\ImageManager;
+use Intervention\Image\Drivers\Imagick\Driver;
 
 class FaceProcessJob extends BaseProcessJob
 {
@@ -239,7 +239,7 @@ class FaceProcessJob extends BaseProcessJob
         $img = $manager->read($debugPath);
 
         // Конвертируем в WebP (quality из конфига)
-        $quality = config('image.webp.quality.debug', 80);
+        $quality = (int) config('image.webp.quality.debug', 80);
         $webpData = $img->toWebp(quality: $quality);
 
         // Сохраняем WebP
