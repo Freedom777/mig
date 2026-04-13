@@ -6,6 +6,7 @@ use App\Contracts\ImageRepositoryInterface;
 use App\Models\Image;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
+use Symfony\Component\Process\Process;
 
 class ImageRepository implements ImageRepositoryInterface
 {
@@ -26,12 +27,26 @@ class ImageRepository implements ImageRepositoryInterface
             'updated_at_file' => date('Y-m-d H:i:s', filemtime($filePath)),
         ];
 
-        // Читаем EXIF из JPG/JPEG
+        // Читаем EXIF через exiftool из JPG/JPEG
         $extension = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
         if (in_array($extension, ['jpg', 'jpeg']) && file_exists($filePath)) {
-            $exif = @exif_read_data($filePath, null, true);
-            if ($exif) {
-                $data['metadata'] = json_encode($exif);
+            try {
+                $process = new Process(['exiftool', '-json', '-n', $filePath]);
+                $process->run();
+
+                if ($process->isSuccessful()) {
+                    $output = $process->getOutput();
+                    $exifData = json_decode($output, true);
+
+                    if (!empty($exifData[0])) {
+                        $data['metadata'] = json_encode($exifData[0]);
+                    }
+                }
+            } catch (\Exception $e) {
+                Log::warning('Failed to read EXIF with exiftool', [
+                    'filename' => $filename,
+                    'error' => $e->getMessage()
+                ]);
             }
         }
 
