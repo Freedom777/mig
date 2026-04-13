@@ -31,7 +31,7 @@ class ImageRepository implements ImageRepositoryInterface
         $extension = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
         if (in_array($extension, ['jpg', 'jpeg']) && file_exists($filePath)) {
             try {
-                $process = new Process(['exiftool', '-json', '-n', $filePath]);
+                $process = new \Symfony\Component\Process\Process(['exiftool', '-json', '-n', $filePath]);
                 $process->run();
 
                 if ($process->isSuccessful()) {
@@ -39,7 +39,8 @@ class ImageRepository implements ImageRepositoryInterface
                     $exifData = json_decode($output, true);
 
                     if (!empty($exifData[0])) {
-                        $data['metadata'] = json_encode($exifData[0]);
+                        // Laravel автоматически закодирует массив в JSON
+                        $data['metadata'] = $exifData[0];
                     }
                 }
             } catch (\Exception $e) {
