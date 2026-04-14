@@ -16,6 +16,7 @@ class Image extends Model
         'faces_checked' => 'boolean',
         'created_at_file' => 'datetime',
         'updated_at_file' => 'datetime',
+        'taken_at' => 'datetime',
         'hash' => HexCast::class,
         'phash' => HexCast::class,
     ];
@@ -34,6 +35,7 @@ class Image extends Model
         'phash',
         'created_at_file',
         'updated_at_file',
+        'taken_at',
         'metadata',
         'faces_checked',
         'thumbnail_path',

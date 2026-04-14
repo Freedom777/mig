@@ -29,6 +29,7 @@ return new class extends Migration {
             $table->binary('phash', length: 8, fixed: true)->nullable(); // BINARY(8) для perceptual hash
             $table->dateTime('created_at_file')->nullable();
             $table->dateTime('updated_at_file')->nullable();
+            $table->dateTime('taken_at')->nullable();
             $table->json('metadata')->nullable();
 
             $table->boolean('faces_checked')->default(false);

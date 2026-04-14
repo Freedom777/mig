@@ -10,6 +10,7 @@
     "license": "MIT",
     "require": {
         "php": "^8.2",
+        "ext-exif": "*",
         "inertiajs/inertia-laravel": "^2.0",
         "intervention/image": "^4.0",
         "jenssegers/imagehash": "@dev",
@@ -20,8 +21,7 @@
         "matanyadaev/laravel-eloquent-spatial": "^4.5",
         "pestphp/pest": "^4.0",
         "tightenco/ziggy": "^2.4",
-        "vladimir-yuldashev/laravel-queue-rabbitmq": "@dev",
-        "ext-exif": "*"
+        "vladimir-yuldashev/laravel-queue-rabbitmq": "@dev"
     },
     "require-dev": {
         "fakerphp/faker": "^1.23",

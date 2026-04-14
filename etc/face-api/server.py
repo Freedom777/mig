@@ -102,13 +102,15 @@ def image_to_np_array(img):
 
     return image
 
-def save_debug_image(image_array, locations, original_path, image_debug_subdir):
+def save_debug_image(image_array, locations, original_path, image_debug_subdir, webp_quality=80):
     image_dir = os.path.dirname(original_path)  # /var/www/html/storage/app/public/images
     debug_dir = os.path.join(image_dir, image_debug_subdir)  # .../images/debug
     os.makedirs(debug_dir, exist_ok=True)
 
     base_name = os.path.basename(original_path)  # IMG_20251214_121206.jpg
-    debug_path = os.path.join(debug_dir, f"debug_{base_name}")
+    name_without_ext = os.path.splitext(base_name)[0]  # IMG_20251214_121206
+    debug_filename = f"debug_{name_without_ext}.webp"  # debug_IMG_20251214_121206.webp
+    debug_path = os.path.join(debug_dir, debug_filename)
 
     img = Image.fromarray(image_array)
     draw = ImageDraw.Draw(img)
@@ -116,7 +118,9 @@ def save_debug_image(image_array, locations, original_path, image_debug_subdir):
     for i, (top, right, bottom, left) in enumerate(locations):
         draw.rectangle([(left, top), (right, bottom)], outline="green", width=3)
         draw.text((left + 5, bottom - 40), f"Face {i}", fill="red", font=font)
-    img.save(debug_path, quality=90)
+
+    # Сохраняем как WebP с переданным quality
+    img.save(debug_path, format='WEBP', quality=webp_quality)
 
     return debug_path
 
@@ -156,7 +160,8 @@ def calculate_face_quality(image_np, location):
 async def encode_faces(
     image: UploadFile = File(...),
     original_path: str = Form(...),
-    image_debug_subdir: str = Form("debug")
+    image_debug_subdir: str = Form("debug"),
+    webp_quality: int = Form(80)
 ):
     start = time.time()
     allowed_extensions = {'jpg', 'jpeg', 'png', 'webp'}
@@ -193,9 +198,9 @@ async def encode_faces(
             logger.info(f"Generated {len(encodings)} encodings")
 
         debug_path = save_debug_image(
-            image_np, locations, original_path, image_debug_subdir
+            image_np, locations, original_path, image_debug_subdir, webp_quality
         )
-        logger.info(f"Debug image saved: {debug_path}")
+        logger.info(f"Debug image saved: {debug_path} (quality={webp_quality})")
 
         elapsed = round(time.time() - start, 2)
         logger.info(f"Encoding took {elapsed}s")

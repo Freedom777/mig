@@ -2,20 +2,19 @@
 
 namespace App\Services;
 
+use App\Contracts\ImagePathServiceInterface;
 use App\Contracts\ImageQueueDispatcherInterface;
 use App\Contracts\ImageRepositoryInterface;
 use App\Contracts\ImageServiceInterface;
 use App\Models\Image;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Storage;
-use Intervention\Image\ImageManager;
-use Intervention\Image\Drivers\Imagick\Driver;
 
 class ImageService implements ImageServiceInterface
 {
     public function __construct(
         protected ImageRepositoryInterface $imageRepository,
-        protected ImageQueueDispatcherInterface $queueDispatcher
+        protected ImageQueueDispatcherInterface $queueDispatcher,
+        protected ImagePathServiceInterface $pathService
     ) {}
 
     /**
@@ -33,40 +32,51 @@ class ImageService implements ImageServiceInterface
             'filename' => $filename
         ]);
 
-        // Проверяем существование (если нужно пропустить)
-        if ($skipIfExists && $this->imageRepository->exists($disk, $path, $filename)) {
-            Log::info('Image already exists, skipping', [
-                'disk' => $disk,
-                'path' => $path,
-                'filename' => $filename
+        // Проверяем формат - только JPG/JPEG
+        $extension = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
+        if (!in_array($extension, ['jpg', 'jpeg'])) {
+            Log::warning('Invalid image format - only JPG/JPEG allowed', [
+                'filename' => $filename,
+                'extension' => $extension
             ]);
 
             return [
                 'success' => false,
                 'image' => null,
-                'message' => 'Image already exists: ' . $filename,
+                'message' => 'Invalid format: ' . $extension . '. Only JPG/JPEG allowed.',
+            ];
+        }
+
+        // Генерируем WebP filename для проверки существования
+        $webpFilename = pathinfo($filename, PATHINFO_FILENAME) . '.webp';
+
+        // Проверяем существование WebP в БД (если нужно пропустить)
+        if ($skipIfExists && $this->imageRepository->exists($disk, $path, $webpFilename)) {
+            Log::info('Image already exists (as WebP), skipping', [
+                'disk' => $disk,
+                'path' => $path,
+                'original' => $filename,
+                'webp' => $webpFilename
+            ]);
+
+            return [
+                'success' => false,
+                'image' => null,
+                'message' => 'Image already exists: ' . $webpFilename,
             ];
         }
 
         // 1. Подготавливаем данные (читаем EXIF из оригинального JPG)
         $preparedData = $this->imageRepository->prepareImageData($disk, $path, $filename);
 
-        // 2. Конвертировать JPG → WebP если нужно
-        $finalFilename = $this->convertToWebPIfNeeded($disk, $path, $filename);
-
-        // 3. Обновляем filename в данных (если был сконвертирован)
-        if ($finalFilename !== $filename) {
-            $preparedData['source_filename'] = $finalFilename;
-        }
-
-        // 4. Создаём/обновляем запись в БД
+        // 2. Создаём/обновляем запись в БД (сохраняем как JPG!)
         $image = $this->imageRepository->updateOrCreate($preparedData);
 
         if (!$image) {
             Log::error('Failed to insert image', [
                 'disk' => $disk,
                 'path' => $path,
-                'filename' => $finalFilename
+                'filename' => $filename
             ]);
 
             return [
@@ -78,10 +88,22 @@ class ImageService implements ImageServiceInterface
 
         Log::info('Image inserted successfully', [
             'image_id' => $image->id,
-            'filename' => $finalFilename
+            'filename' => $filename,
+            'has_geolocation' => (bool)$image->image_geolocation_point_id,
+            'has_taken_at' => (bool)$image->taken_at
         ]);
 
-        // 5. Ставим в очередь все джобы
+        // 3. Если есть GPS point → запускаем GeolocationProcessJob СРАЗУ
+        if ($image->image_geolocation_point_id) {
+            $geoStatus = $this->queueDispatcher->dispatchGeolocation($image);
+
+            Log::info('Geolocation job dispatched from ImageService', [
+                'image_id' => $image->id,
+                'status' => $geoStatus
+            ]);
+        }
+
+        // 4. Ставим в очередь все остальные джобы (включая ConvertToWebPJob в конце)
         $queueStatuses = $this->queueDispatcher->dispatchAll($image);
 
         Log::info('All jobs queued', ['image_id' => $image->id]);
@@ -92,82 +114,6 @@ class ImageService implements ImageServiceInterface
             'message' => 'Image uploaded and processing started',
             'queue_statuses' => $queueStatuses,
         ];
-    }
-
-    /**
-     * Конвертировать JPG → WebP если это JPG файл
-     * Возвращает финальное имя файла (WebP)
-     */
-    private function convertToWebPIfNeeded(string $disk, string $path, string $filename): string
-    {
-        $extension = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
-
-        // Если уже WebP - ничего не делаем
-        if ($extension === 'webp') {
-            return $filename;
-        }
-
-        // Если не JPG/JPEG - тоже ничего не делаем (на будущее для PNG)
-        if (!in_array($extension, ['jpg', 'jpeg'])) {
-            return $filename;
-        }
-
-        Log::info('Converting JPG to WebP', [
-            'disk' => $disk,
-            'path' => $path,
-            'filename' => $filename
-        ]);
-
-        try {
-            $storage = Storage::disk($disk);
-            $relativePath = $path . '/' . $filename;
-            $absolutePath = $storage->path($relativePath);
-
-            // Проверяем что файл существует
-            if (!file_exists($absolutePath)) {
-                Log::error('File not found for WebP conversion', [
-                    'path' => $absolutePath
-                ]);
-                return $filename; // Возвращаем оригинальное имя
-            }
-
-            // Генерируем WebP имя
-            $webpFilename = pathinfo($filename, PATHINFO_FILENAME) . '.webp';
-            $webpRelativePath = $path . '/' . $webpFilename;
-
-            // Создаём ImageManager
-            $manager = new ImageManager(new Driver());
-
-            // Загружаем изображение
-            $img = $manager->read($absolutePath);
-
-            // Конвертируем в WebP (quality из конфига)
-            $quality = (int) config('image.webp.quality.image', 90);
-            $webpData = $img->toWebp(quality: $quality);
-
-            // Сохраняем WebP
-            $storage->put($webpRelativePath, (string) $webpData);
-
-            // Удаляем оригинальный JPG
-            $storage->delete($relativePath);
-
-            Log::info('Successfully converted to WebP', [
-                'original' => $filename,
-                'webp' => $webpFilename,
-                'webp_size' => $storage->size($webpRelativePath)
-            ]);
-
-            return $webpFilename;
-
-        } catch (\Exception $e) {
-            Log::error('Failed to convert to WebP', [
-                'filename' => $filename,
-                'error' => $e->getMessage()
-            ]);
-
-            // В случае ошибки возвращаем оригинальное имя
-            return $filename;
-        }
     }
 
     /**

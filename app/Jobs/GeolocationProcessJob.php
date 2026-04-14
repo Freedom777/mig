@@ -2,7 +2,6 @@
 
 namespace App\Jobs;
 
-use App\Models\Geolocation;
 use App\Models\Image;
 use App\Models\ImageGeolocationAddress;
 use App\Models\ImageGeolocationPoint;
@@ -11,7 +10,6 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
-use MatanYadaev\EloquentSpatial\Objects\Point;
 
 class GeolocationProcessJob extends BaseProcessJob
 {
@@ -54,70 +52,64 @@ class GeolocationProcessJob extends BaseProcessJob
     {
         $image = Image::findOrFail($this->taskData['image_id']);
 
-        // Проверяем наличие метаданных
-        if (!$image->metadata) {
-            Log::warning('No metadata found for image', ['image_id' => $image->id]);
+        // Проверяем наличие point
+        if (!$image->image_geolocation_point_id) {
+            Log::warning('No geolocation point for image', ['image_id' => $image->id]);
             return;
         }
 
-        // Декодируем JSON metadata в массив
-        $metadata = is_string($image->metadata)
-            ? json_decode($image->metadata, true)
-            : $image->metadata;
-
-        if (!$metadata) {
-            Log::error('Failed to decode metadata JSON', ['image_id' => $image->id]);
-            return;
-        }
-
-        // Проверяем наличие GPS данных
-        if (!Geolocation::hasGeodata($metadata)) {
-            Log::info('No GPS data in metadata', ['image_id' => $image->id]);
-            return;
-        }
-
-        // Извлекаем координаты
-        [$latitude, $longitude] = Geolocation::extractCoordinates($metadata);
-
-        if (!$latitude || !$longitude || !is_float($latitude) || !is_float($longitude)) {
-            Log::warning('Invalid coordinates extracted', [
-                'image_id' => $image->id,
-                'latitude' => $latitude,
-                'longitude' => $longitude,
-            ]);
-            return;
-        }
-
-        $pointLatLon = new Point($latitude, $longitude);
-
-        $point = ImageGeolocationPoint::where('coordinates', $pointLatLon)->first();
+        // Получаем point
+        $point = ImageGeolocationPoint::find($image->image_geolocation_point_id);
 
         if (!$point) {
-            $addressId = ImageGeolocationAddress::whereContains('osm_area', $pointLatLon)->value('id');
-
-            if (!$addressId) {
-                $this->waitForRateLimit();
-
-                $addressId = $this->getAddressId($latitude, $longitude);
-                if (!$addressId) {
-                    throw new \Exception('Failed to get address from Nominatim API');
-                }
-            }
-
-            $point = ImageGeolocationPoint::create([
-                'image_geolocation_address_id' => $addressId,
-                'coordinates' => $pointLatLon,
+            Log::error('Geolocation point not found', [
+                'image_id' => $image->id,
+                'point_id' => $image->image_geolocation_point_id
             ]);
-
-            Log::info('Created new geolocation point', [
-                'point_id' => $point->id,
-                'coordinates' => [$latitude, $longitude]
-            ]);
+            return;
         }
 
-        $image->update(['image_geolocation_point_id' => $point->id]);
+        // Если у point уже есть address - ничего не делаем
+        if ($point->image_geolocation_address_id) {
+            Log::info('Point already has address', [
+                'image_id' => $image->id,
+                'point_id' => $point->id,
+                'address_id' => $point->image_geolocation_address_id
+            ]);
+            return;
+        }
 
-        Log::info('Geolocation processed successfully', ['image_id' => $image->id]);
+        // Извлекаем координаты из point
+        $latitude = $point->coordinates->latitude;
+        $longitude = $point->coordinates->longitude;
+
+        Log::info('Processing geolocation for point', [
+            'image_id' => $image->id,
+            'point_id' => $point->id,
+            'coordinates' => [$latitude, $longitude]
+        ]);
+
+        // Ищем существующий address по области
+        $addressId = ImageGeolocationAddress::whereContains('osm_area', $point->coordinates)->value('id');
+
+        // Если не нашли - запрашиваем у Nominatim
+        if (!$addressId) {
+            $this->waitForRateLimit();
+
+            $addressId = $this->getAddressId($latitude, $longitude);
+            if (!$addressId) {
+                throw new \Exception('Failed to get address from Nominatim API');
+            }
+        }
+
+        // Привязываем address к point
+        $point->update(['image_geolocation_address_id' => $addressId]);
+
+        Log::info('Geolocation processed successfully', [
+            'image_id' => $image->id,
+            'point_id' => $point->id,
+            'address_id' => $addressId
+        ]);
     }
 
     /**
