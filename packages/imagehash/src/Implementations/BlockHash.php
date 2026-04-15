@@ -65,7 +65,7 @@ class BlockHash implements Implementation
                         $cy = $y * $blocksizeY + $iy;
                         $colorCollection = $image->colorsAt($cx, $cy);
                         $color = $colorCollection->first();
-                        $rgb = [$color->red()->toInt(), $color->green()->toInt(), $color->blue()->toInt()];
+                        $rgb = [$color->red()->value, $color->green()->value, $color->blue()->value];
                         $value += $rgb[0] + $rgb[1] + $rgb[2];
                     }
                 }
@@ -118,7 +118,7 @@ class BlockHash implements Implementation
             for ($x = 0; $x < $imageWidth; $x++) {
                 $colorCollection = $image->colorsAt($x, $y);
                 $color = $colorCollection->first();
-                $rgb = [$color->red()->toInt(), $color->green()->toInt(), $color->blue()->toInt()];
+                $rgb = [$color->red()->value, $color->green()->value, $color->blue()->value];
                 $value = $rgb[0] + $rgb[1] + $rgb[2];
 
                 if ($evenX) {

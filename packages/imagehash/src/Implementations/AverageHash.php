@@ -24,7 +24,7 @@ class AverageHash implements Implementation
             for ($x = 0; $x < $this->size; $x++) {
                 $colorCollection = $resized->colorsAt($x, $y);
                 $color = $colorCollection->first();
-                $rgb = [$color->red()->toInt(), $color->green()->toInt(), $color->blue()->toInt()];
+                $rgb = [$color->red()->value, $color->green()->value, $color->blue()->value];
                 $pixels[] = (int) floor(($rgb[0] * 0.299) + ($rgb[1] * 0.587) + ($rgb[2] * 0.114));
             }
         }
