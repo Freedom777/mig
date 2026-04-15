@@ -5,7 +5,6 @@ namespace App\Services;
 use App\Contracts\ImagePathServiceInterface;
 use App\Contracts\ImageQueueDispatcherInterface;
 use App\Jobs\BaseProcessJob;
-use App\Jobs\ConvertToWebpJob;
 use App\Jobs\FaceProcessJob;
 use App\Jobs\GeolocationProcessJob;
 use App\Jobs\ImageProcessJob;
@@ -93,11 +92,10 @@ class ImageQueueDispatcher implements ImageQueueDispatcherInterface
                 Log::debug('Processing disabled, skipping all jobs', ['image_id' => $image->id]);
             }
             return [
-                'image' => 'skipped',
                 'thumbnail' => 'skipped',
                 'metadata' => 'skipped',
                 'face' => 'skipped',
-                'webp' => 'skipped',
+                'image' => 'skipped',
             ];
         }
 
@@ -110,11 +108,10 @@ class ImageQueueDispatcher implements ImageQueueDispatcherInterface
                 'jobs' => ['image', 'thumbnail', 'metadata', 'face', 'webp']
             ]);
             return [
-                'image' => 'dry-run',
                 'thumbnail' => 'dry-run',
                 'metadata' => 'dry-run',
                 'face' => 'dry-run',
-                'webp' => 'dry-run',
+                'image' => 'dry-run',
             ];
         }
 
@@ -132,24 +129,22 @@ class ImageQueueDispatcher implements ImageQueueDispatcherInterface
             } else {
                 // Queue режим - используем Bus::chain()
                 Bus::chain([
-                    new ImageProcessJob($data),
                     new ThumbnailProcessJob($data),
                     new MetadataProcessJob($data),
                     new FaceProcessJob($data),
-                    new ConvertToWebpJob($data), // ПОСЛЕДНЯЯ!
+                    new ImageProcessJob($data),
                 ])->dispatch();
 
                 $statuses = [
-                    'image' => 'chained',
                     'thumbnail' => 'chained',
                     'metadata' => 'chained',
                     'face' => 'chained',
-                    'webp' => 'chained',
+                    'image' => 'chained',
                 ];
 
                 Log::info('Jobs chained successfully', [
                     'image_id' => $image->id,
-                    'jobs_count' => 5
+                    'jobs_count' => 4
                 ]);
             }
 
@@ -161,11 +156,10 @@ class ImageQueueDispatcher implements ImageQueueDispatcherInterface
                 'error' => $e->getMessage()
             ]);
             return [
-                'image' => 'error',
                 'thumbnail' => 'error',
                 'metadata' => 'error',
                 'face' => 'error',
-                'webp' => 'error',
+                'image' => 'error',
             ];
         }
     }
@@ -217,16 +211,6 @@ class ImageQueueDispatcher implements ImageQueueDispatcherInterface
             queue: config('queue.name.faces'),
             imageId: $image->id,
             jobName: 'Face'
-        );
-    }
-
-    public function dispatchWebpConversion(Image $image): string
-    {
-        return $this->dispatch(
-            jobClass: ConvertToWebpJob::class,
-            queue: config('queue.name.images'), // Та же очередь что и основная обработка
-            imageId: $image->id,
-            jobName: 'WebpConversion'
         );
     }
 
