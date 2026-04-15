@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\Contracts\ImagePathServiceInterface;
 use App\Enums\ThumbMethodEnum;
+use App\Events\ImageJobCompleted;
 use App\Models\Image;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Storage;
@@ -27,6 +28,9 @@ class ThumbnailProcessJob extends BaseProcessJob
             $lock->block(60, function () use ($pathService) {
                 $this->processThumbnail($pathService);
             });
+
+            event(new ImageJobCompleted($imageId, 'thumbnail'));
+
         } catch (\Illuminate\Contracts\Cache\LockTimeoutException $e) {
             Log::warning('Could not acquire lock for thumbnail processing', [
                 'image_id' => $imageId

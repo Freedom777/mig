@@ -11,7 +11,6 @@ use App\Jobs\ImageProcessJob;
 use App\Jobs\MetadataProcessJob;
 use App\Jobs\ThumbnailProcessJob;
 use App\Models\Image;
-use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Log;
 
 class ImageQueueDispatcher implements ImageQueueDispatcherInterface
@@ -102,10 +101,11 @@ class ImageQueueDispatcher implements ImageQueueDispatcherInterface
         $data = ['image_id' => $image->id];
 
         if ($dryRun) {
-            Log::info('[DRY-RUN] Would chain jobs for image', [
+            Log::info('[DRY-RUN] Would dispatch parallel jobs for image', [
                 'image_id' => $image->id,
                 'mode' => $mode,
-                'jobs' => ['image', 'thumbnail', 'metadata', 'face', 'webp']
+                'jobs' => ['thumbnail', 'metadata', 'face'],
+                'note' => 'ImageProcessJob will be triggered by event listener'
             ]);
             return [
                 'thumbnail' => 'dry-run',
@@ -115,43 +115,42 @@ class ImageQueueDispatcher implements ImageQueueDispatcherInterface
             ];
         }
 
-        // Используем Bus::chain для последовательного выполнения
-        // ConvertToWebpJob ПОСЛЕДНЯЯ - выполнится только после всех остальных
         try {
             if ($mode === 'sync') {
                 // Sync режим - выполняем последовательно
                 $statuses = [];
-                $statuses['image'] = $this->executeSync(ImageProcessJob::class, $data, 'Image', $image->id, $debug);
                 $statuses['thumbnail'] = $this->executeSync(ThumbnailProcessJob::class, $data, 'Thumbnail', $image->id, $debug);
                 $statuses['metadata'] = $this->executeSync(MetadataProcessJob::class, $data, 'Metadata', $image->id, $debug);
                 $statuses['face'] = $this->executeSync(FaceProcessJob::class, $data, 'Face', $image->id, $debug);
-                $statuses['webp'] = $this->executeSync(ConvertToWebpJob::class, $data, 'WebpConversion', $image->id, $debug);
+                // ImageProcessJob будет запущена через event listener
+                $statuses['image'] = 'pending';
             } else {
-                // Queue режим - используем Bus::chain()
-                Bus::chain([
-                    new ThumbnailProcessJob($data),
-                    new MetadataProcessJob($data),
-                    new FaceProcessJob($data),
-                    new ImageProcessJob($data),
-                ])->dispatch();
+                // Queue режим - dispatch параллельно
+                ThumbnailProcessJob::dispatch($data)->onQueue(config('queue.name.thumbnails'));
+                MetadataProcessJob::dispatch($data)->onQueue(config('queue.name.metadatas'));
+                FaceProcessJob::dispatch($data)->onQueue(config('queue.name.faces'));
+                // ImageProcessJob будет запущена через event listener
 
                 $statuses = [
-                    'thumbnail' => 'chained',
-                    'metadata' => 'chained',
-                    'face' => 'chained',
-                    'image' => 'chained',
+                    'thumbnail' => 'queued',
+                    'metadata' => 'queued',
+                    'face' => 'queued',
+                    'image' => 'pending', // Будет запущена listener'ом автоматически
                 ];
 
-                Log::info('Jobs chained successfully', [
+                Log::info('Jobs dispatched in parallel', [
                     'image_id' => $image->id,
-                    'jobs_count' => 4
+                    'jobs_count' => 3,
+                    'note' => 'ImageProcessJob will be triggered by event listener'
                 ]);
             }
+
+            Log::info('All jobs queued', ['image_id' => $image->id]);
 
             return $statuses;
 
         } catch (\Exception $e) {
-            Log::error('Failed to chain jobs', [
+            Log::error('Failed to dispatch jobs', [
                 'image_id' => $image->id,
                 'error' => $e->getMessage()
             ]);

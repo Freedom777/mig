@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\Contracts\ImagePathServiceInterface;
 use App\Enums\FaceStatusEnum;
+use App\Events\ImageJobCompleted;
 use App\Models\Face;
 use App\Models\Image;
 use App\Models\Person;
@@ -30,6 +31,9 @@ class FaceProcessJob extends BaseProcessJob
             $lock->block(360, function () use ($pathService) {
                 $this->processFaces($pathService);
             });
+
+            event(new ImageJobCompleted($imageId, 'face'));
+
         } catch (\Illuminate\Contracts\Cache\LockTimeoutException $e) {
             Log::warning('Could not acquire lock for face processing', [
                 'image_id' => $imageId

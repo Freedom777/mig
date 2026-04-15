@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\Contracts\ImagePathServiceInterface;
 use App\Contracts\ImageQueueDispatcherInterface;
+use App\Events\ImageJobCompleted;
 use App\Models\Image;
 use App\Models\ImageGeolocationPoint;
 use Illuminate\Support\Facades\Cache;
@@ -26,6 +27,9 @@ class MetadataProcessJob extends BaseProcessJob
             $lock->block(30, function () use ($pathService) {
                 $this->processMetadata($pathService);
             });
+
+            event(new ImageJobCompleted($imageId, 'metadata'));
+
         } catch (\Illuminate\Contracts\Cache\LockTimeoutException $e) {
             Log::warning('Could not acquire lock for metadata processing', [
                 'image_id' => $imageId

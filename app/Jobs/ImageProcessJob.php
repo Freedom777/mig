@@ -52,22 +52,6 @@ class ImageProcessJob extends BaseProcessJob
         ImagePathServiceInterface $pathService
     ): void {
         $image = Image::findOrFail($this->taskData['image_id']);
-
-        // КРИТИЧЕСКАЯ ПРОВЕРКА: Все предыдущие jobs должны быть выполнены!
-        // Иначе не удаляем JPG - можем потерять возможность повторной обработки
-
-        if (!$image->metadata) {
-            throw new \Exception('Metadata not processed yet - cannot convert to WebP. JPG preserved.');
-        }
-
-        if (!$image->faces_checked) {
-            throw new \Exception('Faces not checked yet - cannot convert to WebP. JPG preserved.');
-        }
-
-        if (!$image->thumbnail_filename) {
-            throw new \Exception('Thumbnail not created yet - cannot convert to WebP. JPG preserved.');
-        }
-
         $filePath = $pathService->getImagePathByObj($image);
 
         if (!file_exists($filePath)) {
