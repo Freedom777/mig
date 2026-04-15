@@ -43,7 +43,9 @@ class PerceptualHash implements Implementation
 
         for ($y = 0; $y < $this->size; $y++) {
             for ($x = 0; $x < $this->size; $x++) {
-                $rgb = $resized->colorsAt($x, $y)->toArray();
+                $colorCollection = $resized->colorsAt($x, $y);
+                $color = $colorCollection->first();
+                $rgb = [$color->red()->toInt(), $color->green()->toInt(), $color->blue()->toInt()];
                 $row[$x] = (int) floor(($rgb[0] * 0.299) + ($rgb[1] * 0.587) + ($rgb[2] * 0.114));
             }
             $rows[$y] = $this->calculateDCT($row);
