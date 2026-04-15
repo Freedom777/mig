@@ -1,8 +1,0 @@
-/.idea
-/build
-/vendor
-composer.lock
-.phpstorm.meta.php
-phpunit.xml
-.phpunit.*
-.php_cs.cache
