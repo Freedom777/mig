@@ -3,9 +3,11 @@
 namespace App\Jobs;
 
 use App\Contracts\ImagePathServiceInterface;
+use App\Enums\ThumbMethodEnum;
 use App\Models\Image;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Storage;
+use Intervention\Image\Format;
 use Intervention\Image\ImageManager;
 use Intervention\Image\Drivers\Imagick\Driver;
 use Illuminate\Support\Facades\Log;
@@ -56,13 +58,12 @@ class ThumbnailProcessJob extends BaseProcessJob
 
         // Генерируем пути через PathService
         $thumbPath = $pathService->getThumbnailSubdir($thumbWidth, $thumbHeight);
-
-        // ИЗМЕНЕНО: Генерируем WebP имя файла
-        $originalFilename = $image->filename;
-        $webpFilename = pathinfo($originalFilename, PATHINFO_FILENAME) .
-            "_{$thumbMethod}_{$thumbWidth}x{$thumbHeight}.webp";
-
-        $thumbFilename = $webpFilename;
+        $thumbFilename = $pathService->getThumbnailFilename(
+            $image->filename,
+            $thumbMethod,
+            $thumbWidth,
+            $thumbHeight
+        );
 
         $sourcePath = $pathService->getImagePathByObj($image);
 
@@ -105,18 +106,22 @@ class ThumbnailProcessJob extends BaseProcessJob
 
         try {
             $manager = new ImageManager(new Driver());
-            $img = $manager->read($sourcePath);
 
-            if (!in_array($thumbMethod, ['cover', 'scale', 'resize', 'contain'])) {
+            $img = $manager->decodePath($sourcePath);
+
+            if (!in_array($thumbMethod, ThumbMethodEnum::values())) {
                 throw new \InvalidArgumentException('Invalid thumbnail method: ' . $thumbMethod);
             }
 
+            // Применяем метод ресайза
             $img->{$thumbMethod}($thumbWidth, $thumbHeight);
 
-            // ИЗМЕНЕНО: Сохраняем как WebP с quality из конфига
+            // Конвертируем в WebP (v4 API)
             $quality = (int) config('image.webp.quality.thumbnail', 85);
-            $webpData = $img->toWebp(quality: $quality);
-            file_put_contents($targetPath, (string) $webpData);
+            $webpEncoded = $img->encodeUsingFormat(Format::WEBP, quality: $quality);
+
+            // Сохраняем WebP
+            file_put_contents($targetPath, (string) $webpEncoded);
 
             if (!file_exists($targetPath)) {
                 throw new \RuntimeException('Thumbnail file was not created: ' . $targetPath);
@@ -129,6 +134,8 @@ class ThumbnailProcessJob extends BaseProcessJob
                 'target' => $targetPath,
                 'dimensions' => "{$thumbWidth}x{$thumbHeight}",
                 'method' => $thumbMethod,
+                'format' => 'webp',
+                'quality' => $quality,
             ]);
 
         } catch (\Exception $e) {
