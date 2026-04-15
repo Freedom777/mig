@@ -28,7 +28,7 @@ class ImageHash
      */
     public function hash(mixed $image): Hash
     {
-        $image = $this->driver->read($image);
+        $image = $this->driver->decodePath($image);
 
         return $this->implementation->hash($image);
     }
@@ -54,7 +54,7 @@ class ImageHash
 
     protected function createResource(string $data): Image
     {
-        return $this->driver->read($data);
+        return $this->driver->decodePath($data);
     }
 
     protected function defaultImplementation(): Implementation
