@@ -6,6 +6,7 @@ use App\Contracts\ImagePathServiceInterface;
 use App\Models\Image;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
+use Intervention\Image\Format;
 use Intervention\Image\ImageManager;
 use Intervention\Image\Drivers\Imagick\Driver;
 
@@ -45,6 +46,21 @@ class ConvertToWebpJob extends BaseProcessJob
     {
         $image = Image::findOrFail($this->taskData['image_id']);
 
+        // КРИТИЧЕСКАЯ ПРОВЕРКА: Все предыдущие jobs должны быть выполнены!
+        // Иначе не удаляем JPG - можем потерять возможность повторной обработки
+
+        if (!$image->metadata) {
+            throw new \Exception('Metadata not processed yet - cannot convert to WebP. JPG preserved.');
+        }
+
+        if (!$image->faces_checked) {
+            throw new \Exception('Faces not checked yet - cannot convert to WebP. JPG preserved.');
+        }
+
+        if (!$image->thumbnail_filename) {
+            throw new \Exception('Thumbnail not created yet - cannot convert to WebP. JPG preserved.');
+        }
+
         // Проверяем что это JPG/JPEG
         $extension = strtolower(pathinfo($image->filename, PATHINFO_EXTENSION));
         if (!in_array($extension, ['jpg', 'jpeg'])) {
@@ -83,15 +99,15 @@ class ConvertToWebpJob extends BaseProcessJob
             // Создаём ImageManager
             $manager = new ImageManager(new Driver());
 
-            // Загружаем изображение
-            $img = $manager->read($jpgPath);
+            // Загружаем изображение (Intervention Image v4 - decodePath)
+            $img = $manager->decodePath($jpgPath);
 
-            // Конвертируем в WebP (quality из конфига)
+            // Конвертируем в WebP (v4 - encodeUsingFileExtension)
             $quality = (int) config('image.webp.quality.image', 90);
-            $webpData = $img->toWebp(quality: $quality);
+            $webpEncoded = $img->encodeUsingFormat(Format::WEBP, quality: $quality);
 
             // Сохраняем WebP
-            file_put_contents($webpPath, (string) $webpData);
+            file_put_contents($webpPath, (string) $webpEncoded);
 
             // Обновляем filename в БД
             $image->filename = $webpFilename;
@@ -102,8 +118,8 @@ class ConvertToWebpJob extends BaseProcessJob
 
             Log::info('Successfully converted to WebP', [
                 'image_id' => $image->id,
-                'original' => $image->filename,
-                'webp' => $webpFilename,
+                'original_filename' => pathinfo($image->filename, PATHINFO_FILENAME) . '.jpg',
+                'webp_filename' => $webpFilename,
                 'webp_size' => filesize($webpPath)
             ]);
 
