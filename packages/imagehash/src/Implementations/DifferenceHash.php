@@ -27,7 +27,7 @@ class DifferenceHash implements Implementation
             // Get the pixel value for the leftmost pixel.
             $colorCollection = $resized->colorsAt(0, $y);
             $color = $colorCollection->first();
-            $rgb = [$color->red()->value, $color->green()->value, $color->blue()->value];
+            $rgb = [(int) $color->red(), (int) $color->green(), (int) $color->blue()];
 
             $left = (int) floor(($rgb[0] * 0.299) + ($rgb[1] * 0.587) + ($rgb[2] * 0.114));
 
@@ -35,7 +35,7 @@ class DifferenceHash implements Implementation
                 // Get the pixel value for each pixel starting from position 1.
                 $colorCollection = $resized->colorsAt($x, $y);
                 $color = $colorCollection->first();
-                $rgb = [$color->red()->value, $color->green()->value, $color->blue()->value];
+                $rgb = [(int) $color->red(), (int) $color->green(), (int) $color->blue()];
                 $right = (int) floor(($rgb[0] * 0.299) + ($rgb[1] * 0.587) + ($rgb[2] * 0.114));
 
                 // Each hash bit is set based on whether the left pixel is brighter than the right pixel.
