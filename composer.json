@@ -21,7 +21,7 @@
         "matanyadaev/laravel-eloquent-spatial": "^4.5",
         "pestphp/pest": "^4.0",
         "tightenco/ziggy": "^2.4",
-        "vladimir-yuldashev/laravel-queue-rabbitmq": "^14.4"
+        "vladimir-yuldashev/laravel-queue-rabbitmq": "dev-master"
     },
     "require-dev": {
         "fakerphp/faker": "^1.23",
@@ -36,6 +36,10 @@
         {
             "type": "path",
             "url": "./packages/imagehash"
+        },
+        {
+            "type": "path",
+            "url": "./packages/laravel-queue-rabbitmq"
         }
     ],
     "autoload": {
