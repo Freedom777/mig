@@ -22,7 +22,7 @@ class AverageHash implements Implementation
         $pixels = [];
         for ($y = 0; $y < $this->size; $y++) {
             for ($x = 0; $x < $this->size; $x++) {
-                $rgb = $resized->pickColor($x, $y)->toArray();
+                $rgb = $resized->colorsAt($x, $y)->toArray();
                 $pixels[] = (int) floor(($rgb[0] * 0.299) + ($rgb[1] * 0.587) + ($rgb[2] * 0.114));
             }
         }
