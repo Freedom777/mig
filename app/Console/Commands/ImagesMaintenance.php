@@ -72,9 +72,10 @@ class ImagesMaintenance extends Command
             'debug' => 0,
             'thumbnails' => 0,
         ];
+        $orphanedJpg = 0;
         
         foreach ($images as $image) {
-            // Проверка основного файла
+            // Проверка основного файла (WebP или JPG)
             $imagePath = $image->filename
                 ? $this->imagePathService->getImagePathByObj($image)
                 : null;
@@ -82,6 +83,17 @@ class ImagesMaintenance extends Command
             if (!$imagePath || !is_file($imagePath)) {
                 $this->line("❌ Image missing (ID: {$image->id}): " . ($imagePath ?? '[no filename]'));
                 $missing['images']++;
+            }
+            
+            // Проверка orphaned JPG (если filename .webp, но JPG существует)
+            if ($imagePath && str_ends_with($image->filename, '.webp')) {
+                $jpgFilename = pathinfo($image->filename, PATHINFO_FILENAME) . '.jpg';
+                $jpgPath = $this->imagePathService->getImagePathByParams($image->disk, $image->path, $jpgFilename);
+                
+                if (file_exists($jpgPath)) {
+                    $this->line("⚠️  Orphaned JPG (ID: {$image->id}): {$jpgFilename}");
+                    $orphanedJpg++;
+                }
             }
             
             // Проверка debug файла
@@ -110,9 +122,15 @@ class ImagesMaintenance extends Command
         $this->line("  - Missing images: {$missing['images']}");
         $this->line("  - Missing debug: {$missing['debug']}");
         $this->line("  - Missing thumbnails: {$missing['thumbnails']}");
+        $this->line("  - Orphaned JPG files: {$orphanedJpg}");
         
         if ($missing['images'] > 0) {
             $this->warn("⚠️  Found {$missing['images']} missing image files!");
+        }
+        
+        if ($orphanedJpg > 0) {
+            $this->warn("⚠️  Found {$orphanedJpg} orphaned JPG files!");
+            $this->line("Run: php artisan images:recover");
         }
     }
 

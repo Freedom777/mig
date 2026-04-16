@@ -77,7 +77,7 @@ class ImagesReprocess extends Command
                 ->where(function ($q) {
                     $q->where(function ($subQ) {
                         $subQ->whereNotNull('metadata->GPSLatitude')
-                            ->whereNotNull('metadata->GPSLongitude');
+                             ->whereNotNull('metadata->GPSLongitude');
                     })->orWhereNotNull('metadata->GPSPosition');
                 })
                 ->whereNull('image_geolocation_point_id');
@@ -89,7 +89,7 @@ class ImagesReprocess extends Command
         if ($this->option('no-webp')) {
             $query->where(function ($q) {
                 $q->where('filename', 'like', '%.jpg')
-                    ->orWhere('filename', 'like', '%.jpeg');
+                  ->orWhere('filename', 'like', '%.jpeg');
             });
             $this->info('Filter: filename still .jpg');
             $filtersApplied++;

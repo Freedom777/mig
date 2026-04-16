@@ -1,462 +1,373 @@
-# Commands Refactoring - Variant C
+# Commands Reference
 
-Упрощение структуры команд до **3 основных команд**.
-
----
-
-## Новая структура
-
-### 1. `images:process`
-Первичная обработка - сканирование директории и создание Image записей.
-
-**Без изменений** - уже существует.
+Все artisan команды для работы с системой обработки изображений.
 
 ---
 
-### 2. `images:reprocess` (ОБНОВЛЁН)
-Переобработка изображений с ошибками или недостающими данными.
+## Processing Commands
 
-**Заменяет:**
-- ❌ `ImagesFaces`
-- ❌ `ImagesMetadatas`
-- ❌ `ImagesThumbnails`
-- ❌ `ImagesGeolocations`
-- ❌ `ImagesFacesCheck` (устарела - parent_id удалён)
+### `images:process`
 
-**Новые фильтры:**
-- `--no-metadata` - изображения без metadata
-- `--no-thumbnails` - изображения без thumbnails
-- `--has-gps` - изображения с GPS но без geolocation
+Обработка новых изображений из директории.
 
-**Новые очереди:**
-- `--queue=metadata`
-- `--queue=thumbnails`
-- `--queue=geolocations`
-
----
-
-### 3. `images:maintenance` (НОВАЯ)
-Утилиты обслуживания - проверка, очистка, pHash.
-
-**Заменяет:**
-- ❌ `ImagesCheck`
-- ❌ `CleanupUnusedImages`
-- ❌ `ImagesPhashes`
-
-**Действия:**
-- `check` - проверка файлов
-- `cleanup` - очистка неиспользуемых debug
-- `phash` - генерация pHash
-- `all` - всё вместе (по умолчанию)
-
----
-
-## Миграционная таблица
-
-| Старая команда | Новая команда | Примечания |
-|----------------|---------------|------------|
-| `images:process` | `images:process` | Без изменений |
-| `images:faces` | `images:reprocess --faces-failed --queue=faces` | Объединено |
-| `images:metadatas` | `images:reprocess --no-metadata --queue=metadata` | Объединено |
-| `images:thumbnails` | `images:reprocess --no-thumbnails --queue=thumbnails` | Объединено |
-| `images:geolocations` | `images:reprocess --has-gps --queue=geolocations` | Объединено |
-| `images:faces:check` | **УДАЛЕНА** | parent_id удалён |
-| `images:check` | `images:maintenance check` | Объединено |
-| `images:cleanup-unused` | `images:maintenance cleanup` | Объединено |
-| `images:phashes` | `images:maintenance phash` | Объединено |
-
----
-
-## Примеры использования
-
-### Переобработка (images:reprocess)
-
-#### Вместо `images:faces`:
+**Использование:**
 ```bash
-# Было
-php artisan images:faces
+php artisan images:process {disk?} {source?} [--skip-existing]
+```
 
-# Стало
+**Параметры:**
+- `disk` - Storage disk (по умолчанию из config)
+- `source` - Директория с изображениями
+- `--skip-existing` - Пропустить уже существующие в БД
+
+**Примеры:**
+```bash
+# Обработать все JPG в images/
+php artisan images:process private images
+
+# Пропустить существующие
+php artisan images:process private images --skip-existing
+```
+
+**Что делает:**
+1. Сканирует директорию рекурсивно
+2. Находит JPG/JPEG файлы
+3. Вызывает `ImageService::processNewUpload()`
+4. Dispatch'ит 4 jobs параллельно:
+   - ThumbnailProcessJob
+   - MetadataProcessJob
+   - FaceProcessJob
+   - ImageProcessJob (hash + WebP)
+
+---
+
+## Recovery Commands
+
+### `images:recover`
+
+Универсальное восстановление после ошибок.
+
+**Использование:**
+```bash
+php artisan images:recover [--dry-run] [--limit=N] [--verbose]
+```
+
+**Параметры:**
+- `--dry-run` - Показать что будет сделано без изменений
+- `--limit=N` - Ограничить количество проверяемых изображений
+- `--verbose` - Подробный вывод для каждого изображения
+
+**Что делает:**
+Автоматически обрабатывает все проблемные ситуации:
+
+| Ситуация | Действие |
+|----------|----------|
+| WebP ✅ + JPG ✅ | Удаляет orphaned JPG |
+| WebP ❌ + JPG ✅ | Восстанавливает: filename→.jpg, hash=NULL, dispatch ImageProcessJob |
+| WebP ❌ + JPG ❌ | Помечает: last_error + status=recheck |
+
+**Примеры:**
+```bash
+# Dry-run для проверки
+php artisan images:recover --dry-run --verbose
+
+# Восстановить все проблемы
+php artisan images:recover
+
+# Проверить первые 100
+php artisan images:recover --limit=100
+```
+
+**Статистика:**
+```
+📊 Recovery statistics:
+┌────────────────────────┬───────┐
+│ Action                 │ Count │
+├────────────────────────┼───────┤
+│ Already OK             │ 1234  │
+│ Orphaned JPG deleted   │ 45    │
+│ Restored from JPG      │ 12    │
+│ Marked as broken       │ 3     │
+│ Errors                 │ 0     │
+└────────────────────────┴───────┘
+```
+
+---
+
+## Reprocessing Commands
+
+### `images:reprocess`
+
+Переобработка изображений с ошибками или отсутствующими данными.
+
+**Использование:**
+```bash
+php artisan images:reprocess [OPTIONS]
+```
+
+**Фильтры:**
+- `--no-debug` - Без debug_filename (faces_checked=1)
+- `--faces-failed` - faces_checked = 0
+- `--no-metadata` - metadata IS NULL
+- `--no-thumbnails` - thumbnail_path IS NULL
+- `--has-gps` - Есть GPS но нет geolocation
+- `--no-webp` - filename всё ещё .jpg *(ImageProcessJob failed)*
+- `--no-hash` - hash IS NULL *(ImageProcessJob failed)*
+- `--orphaned-jpg` - filename .webp но JPG существует
+- `--status=recheck` - Конкретный статус
+
+**Очереди:**
+- `--queue=image` - Только ImageProcessJob (hash + WebP)
+- `--queue=faces` - Только FaceProcessJob
+- `--queue=metadata` - Только MetadataProcessJob
+- `--queue=thumbnails` - Только ThumbnailProcessJob
+- `--queue=geolocations` - Только GeolocationProcessJob
+- `--queue=all` - ВСЕ jobs (по умолчанию)
+
+**Опции:**
+- `--limit=N` - Ограничить количество
+- `--dry-run` - Показать без выполнения
+
+**Примеры:**
+```bash
+# Failed faces recognition
 php artisan images:reprocess --faces-failed --queue=faces
-```
 
-#### Вместо `images:metadatas`:
-```bash
-# Было
-php artisan images:metadatas
-
-# Стало
+# Failed metadata extraction
 php artisan images:reprocess --no-metadata --queue=metadata
-```
 
-#### Вместо `images:thumbnails`:
-```bash
-# Было
-php artisan images:thumbnails
+# Failed ImageProcessJob (WebP конвертация)
+php artisan images:reprocess --no-webp --queue=image
 
-# Стало
-php artisan images:reprocess --no-thumbnails --queue=thumbnails
-```
+# Failed hash computation
+php artisan images:reprocess --no-hash --queue=image
 
-#### Вместо `images:geolocations`:
-```bash
-# Было
-php artisan images:geolocations
+# Найти orphaned JPG
+php artisan images:reprocess --orphaned-jpg --dry-run
 
-# Стало
-php artisan images:reprocess --has-gps --queue=geolocations
-```
+# Статус recheck (максимум 100)
+php artisan images:reprocess --status=recheck --limit=100
 
-#### Новые возможности:
-```bash
-# Переобработать всё для изображений с ошибками
-php artisan images:reprocess --status=error
-
-# Только faces для изображений без debug
-php artisan images:reprocess --no-debug --queue=faces
-
-# Комбинированные фильтры
+# Всё заново
 php artisan images:reprocess --no-metadata --no-thumbnails --queue=all
 ```
 
 ---
 
-### Обслуживание (images:maintenance)
+### `images:reprocess:smart`
 
-#### Вместо `images:check`:
+Умная переобработка с мониторингом очереди RabbitMQ.
+
+**Использование:**
 ```bash
-# Было
-php artisan images:check
-
-# Стало
-php artisan images:maintenance check
+php artisan images:reprocess:smart [OPTIONS]
 ```
 
-#### Вместо `images:cleanup-unused`:
-```bash
-# Было
-php artisan images:cleanup-unused --dry-run
+**Параметры:**
+- `--batch-size=20` - Размер партии
+- `--max-queue-size=50` - Максимальный размер очереди
+- `--check-interval=10` - Интервал проверки (секунды)
+- `--queue=faces` - Какую очередь обрабатывать
+- `--filter=faces-failed` - Фильтр изображений
+- `--max-batches=N` - Максимум партий
 
-# Стало
-php artisan images:maintenance cleanup --dry-run
+**Фильтры:**
+- `faces-failed` - faces_checked = 0
+- `no-debug` - Без debug_filename
+- `no-metadata` - Без metadata
+- `no-thumbnails` - Без thumbnails
+- `no-webp` - filename всё ещё .jpg
+- `no-hash` - hash IS NULL
+- `has-gps` - Есть GPS но нет geolocation
+
+**Как работает:**
+1. Проверяет размер очереди RabbitMQ
+2. Если очередь < max → добавляет партию
+3. Если очередь >= max → ждёт
+4. Повторяет пока не обработает все
+
+**Примеры:**
+```bash
+# Smart reprocessing faces (партии по 50)
+php artisan images:reprocess:smart \
+  --filter=faces-failed \
+  --queue=faces \
+  --batch-size=50 \
+  --max-queue-size=100
+
+# Smart WebP конвертация
+php artisan images:reprocess:smart \
+  --filter=no-webp \
+  --queue=images \
+  --batch-size=20
 ```
 
-#### Вместо `images:phashes`:
-```bash
-# Было
-php artisan images:phashes
-
-# Стало
-php artisan images:maintenance phash
-```
-
-#### Всё вместе:
-```bash
-# Запустить все maintenance задачи
-php artisan images:maintenance all
-
-# Или просто (all по умолчанию)
-php artisan images:maintenance
-```
+**Требования:**
+- RabbitMQ Management Plugin
+- `RABBITMQ_API_PORT=15672` в .env
 
 ---
 
-## Установка
+## Maintenance Commands
 
-### 1. Скопировать новые команды
+### `images:maintenance`
 
+Обслуживание: проверка файлов, очистка, генерация pHash.
+
+**Использование:**
 ```bash
-cp ImagesReprocess.php app/Console/Commands/
-cp ImagesMaintenance.php app/Console/Commands/
+php artisan images:maintenance {action} [OPTIONS]
 ```
 
-### 2. Удалить старые команды
+**Actions:**
+- `check` - Проверить существование файлов
+- `cleanup` - Очистить неиспользуемые debug файлы
+- `phash` - Сгенерировать pHash для изображений без него
+- `all` - Всё вместе
 
+**Опции:**
+- `--dry-run` - Показать без выполнения
+- `--limit=N` - Ограничить количество (только для phash)
+
+**Примеры:**
 ```bash
-cd app/Console/Commands
-
-# Удалить устаревшие
-rm ImagesFaces.php
-rm ImagesMetadatas.php
-rm ImagesThumbnails.php
-rm ImagesGeolocations.php
-rm ImagesFacesCheck.php
-rm ImagesCheck.php
-rm CleanupUnusedImages.php
-rm ImagesPhashes.php
-```
-
-### 3. Обновить документацию/скрипты
-
-Если у вас есть cron задачи или скрипты, обновите их:
-
-```bash
-# Старое
-0 3 * * * php artisan images:faces
-0 4 * * * php artisan images:metadatas
-
-# Новое
-0 3 * * * php artisan images:reprocess --faces-failed --queue=faces
-0 4 * * * php artisan images:reprocess --no-metadata --queue=metadata
-```
-
----
-
-## Полный список команд после рефакторинга
-
-```bash
-# Обработка
-php artisan images:process                  # Сканирование директории
-php artisan images:reprocess                # Переобработка с фильтрами
-
-# Обслуживание
-php artisan images:maintenance              # Проверка + очистка + phash
-```
-
-**Всего 3 команды!** Было 10.
-
----
-
-## images:reprocess - Полное описание
-
-### Фильтры:
-
-| Опция | Описание |
-|-------|----------|
-| `--no-debug` | faces_checked=1 AND debug_filename IS NULL |
-| `--faces-failed` | faces_checked=0 |
-| `--no-metadata` | metadata IS NULL |
-| `--no-thumbnails` | thumbnail_path IS NULL |
-| `--has-gps` | has GPS data but no geolocation |
-| `--status=error` | status = error (можно несколько) |
-| `--limit=100` | Ограничить количество |
-| `--dry-run` | Показать без выполнения |
-
-### Очереди:
-
-| Опция | Описание |
-|-------|----------|
-| `--queue=faces` | Только faces |
-| `--queue=metadata` | Только metadata |
-| `--queue=thumbnails` | Только thumbnails |
-| `--queue=geolocations` | Только geolocations |
-| `--queue=all` | Всё (по умолчанию) |
-
-### Примеры:
-
-```bash
-# Переобработать faces для изображений без debug
-php artisan images:reprocess --no-debug --queue=faces
-
-# Переобработать metadata
-php artisan images:reprocess --no-metadata --queue=metadata
-
-# Переобработать всё для изображений с ошибками (первые 100)
-php artisan images:reprocess --status=error --limit=100
-
-# Dry run - показать что будет обработано
-php artisan images:reprocess --faces-failed --dry-run
-```
-
----
-
-## images:maintenance - Полное описание
-
-### Действия:
-
-| Действие | Описание |
-|----------|----------|
-| `check` | Проверка существования файлов |
-| `cleanup` | Удаление неиспользуемых debug файлов |
-| `phash` | Генерация pHash для изображений |
-| `all` | Все действия (по умолчанию) |
-
-### Опции:
-
-| Опция | Описание |
-|-------|----------|
-| `--dry-run` | Показать без выполнения |
-| `--limit=100` | Ограничить (только для phash) |
-
-### Примеры:
-
-```bash
-# Проверить файлы
+# Проверить все файлы
 php artisan images:maintenance check
 
-# Очистить неиспользуемые debug (dry run)
+# Очистить debug файлы (dry-run)
 php artisan images:maintenance cleanup --dry-run
 
-# Сгенерировать pHash (первые 1000)
-php artisan images:maintenance phash --limit=1000
+# Сгенерировать pHash
+php artisan images:maintenance phash --limit=100
 
-# Выполнить всё
+# Всё вместе
 php artisan images:maintenance all
 ```
 
----
-
-## Что удалено и почему
-
-### ImagesFacesCheck
-**Причина:** Использовала parent_id в таблице faces, который удалён.
-
-**Код:**
-```php
-// Старая логика с parent_id
-$faces = $image->faces;
-foreach ($faces as $face) {
-    $children = $face->children;  // ← parent_id
-    // ...
-}
+**Output (check):**
 ```
+✅ Check completed:
+  - Missing images: 0
+  - Missing debug: 2
+  - Missing thumbnails: 1
+  - Orphaned JPG files: 45
 
-**Замена:** Используйте `images:reprocess --no-debug --queue=faces`
+⚠️  Found 45 orphaned JPG files!
+Run: php artisan images:recover
+```
 
 ---
 
-### ImagesFaces, ImagesMetadatas, ImagesThumbnails, ImagesGeolocations
-**Причина:** Дублирование логики. Все делали одно и то же, но для разных фильтров.
+## Legacy Commands (DEPRECATED)
 
-**Было:**
-```php
-// ImagesFaces.php
-$query = Image::where('faces_checked', 0);
+### ~~`images:convert-to-webp`~~ ❌ УДАЛЕНА
 
-// ImagesMetadatas.php
-$query = Image::whereNull('metadata');
+**Причина:** Устарела после внедрения event-driven архитектуры.
 
-// ImagesThumbnails.php
-$query = Image::whereNull('thumbnail_path');
-```
-
-**Стало:**
+**Используйте вместо:**
 ```bash
-php artisan images:reprocess --faces-failed
-php artisan images:reprocess --no-metadata
-php artisan images:reprocess --no-thumbnails
+# Для новых изображений
+php artisan images:process private images
+
+# Для переобработки
+php artisan images:reprocess --no-webp --queue=image
+
+# Для очистки
+php artisan images:recover
 ```
 
-**Одна команда с разными фильтрами!**
+См. [ImagesToWebp_DEPRECATED.md](ImagesToWebp_DEPRECATED.md)
 
 ---
 
-### ImagesCheck, CleanupUnusedImages, ImagesPhashes
-**Причина:** Утилиты обслуживания логично объединить в одну команду.
+## Workflow Examples
 
-**Было:** 3 отдельные команды
-
-**Стало:**
+### **Новая загрузка изображений:**
 ```bash
+php artisan images:process private images --skip-existing
+```
+
+### **После сбоя обработки:**
+```bash
+# 1. Проверить что сломалось
 php artisan images:maintenance check
+
+# 2. Восстановить автоматически
+php artisan images:recover
+
+# 3. Переобработать конкретные проблемы
+php artisan images:reprocess --no-webp --queue=image
+```
+
+### **Массовая переобработка:**
+```bash
+# Smart reprocessing с контролем очереди
+php artisan images:reprocess:smart \
+  --filter=faces-failed \
+  --queue=faces \
+  --batch-size=50 \
+  --max-queue-size=200
+```
+
+### **Регулярное обслуживание:**
+```bash
+# Еженедельно
+php artisan images:maintenance check
+php artisan images:recover --dry-run
+
+# Ежемесячно
 php artisan images:maintenance cleanup
-php artisan images:maintenance phash
 ```
 
 ---
 
-## Преимущества новой структуры
+## Troubleshooting
 
-### ✅ Меньше команд
-**Было:** 10 команд
-**Стало:** 3 команды
-
-### ✅ Гибкость
+### **ImageProcessJob failed:**
 ```bash
-# Комбинированные фильтры
-php artisan images:reprocess --no-metadata --no-thumbnails --status=error
+# Проверить сколько
+SELECT COUNT(*) FROM images WHERE filename LIKE '%.jpg';
 
-# Выборочные очереди
-php artisan images:reprocess --status=error --queue=faces
+# Переобработать
+php artisan images:reprocess --no-webp --queue=image --limit=100
 ```
 
-### ✅ Консистентность
-Все команды используют одинаковые опции:
-- `--dry-run`
-- `--limit`
-- `--queue`
+### **Orphaned JPG файлы:**
+```bash
+# Найти
+php artisan images:maintenance check
 
-### ✅ Меньше дублирования кода
-Один класс вместо четырёх (Images* → ImagesReprocess)
+# Удалить
+php artisan images:recover
+```
 
-### ✅ Проще поддерживать
-Меньше файлов, меньше мест для изменений
+### **Missing files:**
+```bash
+# Найти сломанные
+SELECT * FROM images 
+WHERE status = 'recheck' 
+AND last_error LIKE '%missing%';
 
----
+# Вручную проверить
+php artisan images:recover --verbose --limit=10
+```
 
-## Обратная совместимость
+### **Очередь переполнена:**
+```bash
+# Проверить размер
+php artisan queue:monitor rabbitmq:images
 
-Если нужно сохранить старые команды для обратной совместимости, создайте алиасы:
-
-```php
-// app/Console/Commands/ImagesFaces.php (алиас)
-class ImagesFaces extends Command
-{
-    protected $signature = 'images:faces';
-    protected $description = '[DEPRECATED] Use: images:reprocess --faces-failed --queue=faces';
-
-    public function handle(): int
-    {
-        $this->warn('⚠️  This command is deprecated!');
-        $this->line('Use instead: php artisan images:reprocess --faces-failed --queue=faces');
-        
-        return $this->call('images:reprocess', [
-            '--faces-failed' => true,
-            '--queue' => 'faces',
-        ]);
-    }
-}
+# Smart reprocessing
+php artisan images:reprocess:smart \
+  --max-queue-size=50 \
+  --check-interval=30
 ```
 
 ---
 
-## Тестирование миграции
+## См. также:
 
-### 1. Проверить что новые команды работают:
-
-```bash
-# Dry run
-php artisan images:reprocess --faces-failed --dry-run
-php artisan images:maintenance check --dry-run
-```
-
-### 2. Сравнить результаты:
-
-```bash
-# Старая команда (если ещё есть)
-php artisan images:faces --dry-run
-
-# Новая команда
-php artisan images:reprocess --faces-failed --dry-run
-
-# Результаты должны быть идентичными
-```
-
-### 3. Запустить на небольшой выборке:
-
-```bash
-php artisan images:reprocess --faces-failed --limit=10
-```
-
----
-
-## Поддержка
-
-Если возникли проблемы при миграции:
-
-1. Проверьте что все Jobs существуют:
-   - FaceProcessJob
-   - MetadataProcessJob
-   - ThumbnailProcessJob
-   - GeolocationProcessJob
-
-2. Проверьте что ImagePathService работает:
-   ```bash
-   php artisan tinker
-   >>> app(App\Services\ImagePathService::class)
-   ```
-
-3. Проверьте логи:
-   ```bash
-   tail -f storage/logs/laravel.log
-   ```
+- [WebP Migration](../webp-migration.md)
+- [Architecture](../architecture.md)
+- [Troubleshooting](../troubleshooting.md)
+- [Configuration](../configuration.md)

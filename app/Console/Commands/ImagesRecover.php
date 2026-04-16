@@ -46,7 +46,7 @@ class ImagesRecover extends Command
 
         // Получаем изображения для проверки
         $query = Image::query();
-
+        
         if ($limit) {
             $query->limit((int)$limit);
             $this->line("Limit: {$limit} images");
@@ -100,19 +100,19 @@ class ImagesRecover extends Command
     {
         // Определяем пути к файлам
         $currentFilename = $image->filename;
-
+        
         // Если filename содержит .webp
         if (str_ends_with($currentFilename, '.webp')) {
             $webpPath = $this->pathService->getImagePathByObj($image);
             $jpgFilename = pathinfo($currentFilename, PATHINFO_FILENAME) . '.jpg';
             $jpgPath = $this->pathService->getImagePathByParams($image->disk, $image->path, $jpgFilename);
-
+            
             $this->handleWebpCase($image, $webpPath, $jpgPath, $jpgFilename, $dryRun, $verbose);
-
+            
         } else {
             // filename не .webp - проверяем что файл существует
             $filePath = $this->pathService->getImagePathByObj($image);
-
+            
             if (file_exists($filePath)) {
                 $this->alreadyOk++;
                 if ($verbose) {
@@ -238,7 +238,7 @@ class ImagesRecover extends Command
     private function displayStatistics(bool $dryRun): void
     {
         $this->info('📊 Recovery statistics:');
-
+        
         $this->table(
             ['Action', 'Count'],
             [

@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Enums\ImageStatusEnum;
 use App\Jobs\FaceProcessJob;
 use App\Jobs\GeolocationProcessJob;
+use App\Jobs\ImageProcessJob;
 use App\Jobs\MetadataProcessJob;
 use App\Jobs\ThumbnailProcessJob;
 use App\Models\Image;
@@ -19,7 +20,7 @@ class ImagesReprocessSmart extends Command
                             {--max-queue-size=50 : Maximum queue size before waiting}
                             {--check-interval=10 : Seconds between queue checks}
                             {--queue=faces : Which queue to process}
-                            {--filter=faces-failed : Filter (faces-failed, no-debug, no-metadata, etc)}
+                            {--filter=faces-failed : Filter (faces-failed, no-debug, no-metadata, no-webp, no-hash, etc)}
                             {--max-batches= : Maximum number of batches (empty = all)}';
 
     protected $description = 'Smart reprocessing with queue monitoring';
@@ -188,6 +189,11 @@ class ImagesReprocessSmart extends Command
             'no-debug' => $query->where('faces_checked', 1)->whereNull('debug_filename'),
             'no-metadata' => $query->whereNull('metadata'),
             'no-thumbnails' => $query->whereNull('thumbnail_path'),
+            'no-webp' => $query->where(function ($q) {
+                $q->where('filename', 'like', '%.jpg')
+                  ->orWhere('filename', 'like', '%.jpeg');
+            }),
+            'no-hash' => $query->whereNull('hash'),
             'has-gps' => $query->whereNotNull('metadata')
                 ->where(function ($q) {
                     $q->where(function ($subQ) {
@@ -214,6 +220,11 @@ class ImagesReprocessSmart extends Command
             'no-debug' => $query->where('faces_checked', 1)->whereNull('debug_filename'),
             'no-metadata' => $query->whereNull('metadata'),
             'no-thumbnails' => $query->whereNull('thumbnail_path'),
+            'no-webp' => $query->where(function ($q) {
+                $q->where('filename', 'like', '%.jpg')
+                  ->orWhere('filename', 'like', '%.jpeg');
+            }),
+            'no-hash' => $query->whereNull('hash'),
             'has-gps' => $query->whereNotNull('metadata')
                 ->where(function ($q) {
                     $q->where(function ($subQ) {
@@ -245,6 +256,7 @@ class ImagesReprocessSmart extends Command
         $jobData = ['image_id' => $image->id];
 
         match($queueName) {
+            config('queue.name.images') => ImageProcessJob::dispatch($jobData)->onQueue(config('queue.name.images')),
             config('queue.name.faces') => FaceProcessJob::dispatch($jobData)->onQueue(config('queue.name.faces')),
             config('queue.name.metadatas') => MetadataProcessJob::dispatch($jobData)->onQueue(config('queue.name.metadatas')),
             config('queue.name.thumbnails') => ThumbnailProcessJob::dispatch($jobData)->onQueue(config('queue.name.thumbnails')),
