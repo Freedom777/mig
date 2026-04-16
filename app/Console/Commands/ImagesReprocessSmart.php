@@ -245,10 +245,10 @@ class ImagesReprocessSmart extends Command
         $jobData = ['image_id' => $image->id];
 
         match($queueName) {
-            'faces' => FaceProcessJob::dispatch($jobData)->onQueue('faces'),
-            'metadata' => MetadataProcessJob::dispatch($jobData)->onQueue('metadatas'),
-            'thumbnails' => ThumbnailProcessJob::dispatch($jobData)->onQueue('thumbnails'),
-            'geolocations' => GeolocationProcessJob::dispatch($jobData)->onQueue('geolocations'),
+            config('queue.name.faces') => FaceProcessJob::dispatch($jobData)->onQueue(config('queue.name.faces')),
+            config('queue.name.metadatas') => MetadataProcessJob::dispatch($jobData)->onQueue(config('queue.name.metadatas')),
+            config('queue.name.thumbnails') => ThumbnailProcessJob::dispatch($jobData)->onQueue(config('queue.name.thumbnails')),
+            config('queue.name.geolocations') => GeolocationProcessJob::dispatch($jobData)->onQueue(config('queue.name.geolocations')),
             default => null
         };
     }

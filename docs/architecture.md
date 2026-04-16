@@ -28,10 +28,21 @@
 │                           │                                         │
 │          ┌───────┬────────┼────────┬───────────┐                    │
 │          ↓       ↓        ↓        ↓           ↓                    │
-│       Image  Thumbnail Metadata Geolocation  Face                   │
-│        Job      Job      Job       Job        Job                   │
+│      Thumbnail Metadata  Face  Geolocation  (Image Job)             │
+│        Job      Job      Job       Job      запускается             │
+│         │        │        │                 listener'ом             │
+│         └────┬───┴────┬───┘                                         │
+│              ↓        ↓                                             │
+│       event(ImageJobCompleted)                                      │
+│              ↓                                                      │
+│   CheckAndDispatchImageProcessing (Listener)                        │
+│              ↓                                                      │
+│         ImageProcessJob                                             │
+│      (hash + WebP + удаление JPG)                                   │
 └─────────────────────────────────────────────────────────────────────┘
 ```
+
+**Event-Driven:** Jobs выполняются параллельно, ImageProcessJob запускается listener'ом после завершения всех.
 
 ## Слои приложения
 
@@ -63,34 +74,57 @@
 
 | Джоба | Очередь | Что делает |
 |-------|---------|------------|
-| `ImageProcessJob` | images | MD5, pHash, размеры, дубликаты |
-| `ThumbnailProcessJob` | thumbnails | Генерация миниатюр |
+| `ImageProcessJob` | images | MD5, pHash из JPG, размеры, дубликаты, WebP конвертация, удаление JPG |
+| `ThumbnailProcessJob` | thumbnails | Генерация WebP миниатюр |
 | `MetadataProcessJob` | metadatas | Извлечение EXIF |
 | `GeolocationProcessJob` | geolocations | GPS → адрес |
 | `FaceProcessJob` | faces | Распознавание лиц |
+
+### 5. Event Layer (События)
+
+| Event | Listener | Триггер | Действие |
+|-------|----------|---------|----------|
+| `ImageJobCompleted` | `CheckAndDispatchImageProcessing` | После завершения каждой job | Проверяет готовность и запускает ImageProcessJob |
 
 ## Связи между модулями
 
 ```
                     ┌──────────────┐
                     │   newUpload  │
+                    │     (JPG)    │
                     └──────┬───────┘
                            │
               ┌────────────┼────────────┬──────────────┐
-              ↓            ↓            ↓              ↓
-         ┌────────┐  ┌──────────┐  ┌──────────┐  ┌─────────┐
-         │ Image  │  │Thumbnail │  │ Metadata │  │  Face   │
-         │  Job   │  │   Job    │  │   Job    │  │   Job   │
-         └────────┘  └──────────┘  └────┬─────┘  └─────────┘
-                                        │
-                                        ↓ (если есть GPS)
-                                  ┌───────────┐
-                                  │Geolocation│
-                                  │    Job    │
-                                  └───────────┘
+              ↓ parallel   ↓ parallel   ↓ parallel     ↓ separate
+         ┌──────────┐  ┌──────────┐  ┌─────────┐  ┌──────────────┐
+         │Thumbnail │  │ Metadata │  │  Face   │  │ Geolocation  │
+         │   Job    │  │   Job    │  │   Job   │  │     Job      │
+         └────┬─────┘  └────┬─────┘  └────┬────┘  └──────────────┘
+              │             │             │
+              └──────┬──────┴─────┬───────┘
+                     ↓            ↓
+              event(ImageJobCompleted)
+                     ↓
+       CheckAndDispatchImageProcessing
+        - metadata ✅?
+        - faces_checked ✅?
+        - thumbnail_filename ✅?
+        - hash/phash еще NULL? (защита от повтора)
+                     ↓ YES
+              ┌─────────────┐
+              │ImageProcess │
+              │     Job     │
+              │ (ПОСЛЕДНЯЯ) │
+              └─────────────┘
+              - Hash из JPG (MD5 + pHash)
+              - WebP конвертация
+              - Удаление JPG
 ```
 
-**Важно:** `GeolocationProcessJob` вызывается из `MetadataProcessJob`, а не напрямую из `dispatchAll()`.
+**Важно:** 
+- Jobs выполняются параллельно (кроме Geolocation)
+- ImageProcessJob запускается автоматически через event listener
+- `GeolocationProcessJob` вызывается из `MetadataProcessJob` (если есть GPS)
 
 ## Дедупликация очередей
 
@@ -157,13 +191,22 @@ app/
 │   ├── MetadataProcessJob.php
 │   ├── GeolocationProcessJob.php
 │   └── FaceProcessJob.php
+├── Events/              # События
+│   └── ImageJobCompleted.php
+├── Listeners/           # Слушатели событий
+│   └── CheckAndDispatchImageProcessing.php
 ├── Console/Commands/    # Artisan команды
 ├── Models/              # Eloquent модели
 ├── Traits/              # Трейты
 ├── Casts/               # Custom casts
 └── Providers/           # Service providers
-    └── ImageServiceProvider.php
+    ├── ImageServiceProvider.php
+    └── EventServiceProvider.php
 
 config/
 └── image.php            # Конфигурация модуля
+
+packages/
+├── imagehash/           # Адаптированный для v4
+└── laravel-queue-rabbitmq/  # Fork для Laravel 13
 ```

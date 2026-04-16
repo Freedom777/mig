@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\Contracts\ImagePathServiceInterface;
 use App\Contracts\ImageRepositoryInterface;
+use App\Events\ImageJobCompleted;
 use App\Models\Image;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
@@ -30,6 +31,10 @@ class ImageProcessJob extends BaseProcessJob
             $lock->block(60, function () use ($imageRepository, $pathService) {
                 $this->processImage($imageRepository, $pathService);
             });
+
+            // Dispatch event после успешного выполнения
+            event(new ImageJobCompleted($imageId, 'image'));
+
         } catch (\Illuminate\Contracts\Cache\LockTimeoutException $e) {
             Log::warning('Could not acquire lock for image processing', [
                 'image_id' => $imageId
@@ -122,7 +127,8 @@ class ImageProcessJob extends BaseProcessJob
     }
 
     /**
-     * Конвертирует JPG в WebP и удаляет JPG
+     * Конвертирует JPG в WebP
+     * НЕ удаляет JPG - это делает listener после завершения всех jobs!
      */
     private function convertToWebp(Image $image, ImagePathServiceInterface $pathService, string $jpgPath): void
     {
@@ -165,13 +171,11 @@ class ImageProcessJob extends BaseProcessJob
         $image->filename = $webpFilename;
         $image->save();
 
-        // Удаляем оригинальный JPG
-        unlink($jpgPath);
-
-        Log::info('Successfully converted to WebP and removed JPG', [
+        Log::info('Successfully converted to WebP', [
             'image_id' => $image->id,
             'webp_filename' => $webpFilename,
-            'webp_size' => filesize($webpPath)
+            'webp_size' => filesize($webpPath),
+            'note' => 'JPG will be deleted by listener after all jobs complete'
         ]);
     }
 }

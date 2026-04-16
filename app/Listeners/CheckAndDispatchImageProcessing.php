@@ -2,13 +2,17 @@
 
 namespace App\Listeners;
 
+use App\Contracts\ImagePathServiceInterface;
 use App\Events\ImageJobCompleted;
-use App\Jobs\ImageProcessJob;
 use App\Models\Image;
 use Illuminate\Support\Facades\Log;
 
 class CheckAndDispatchImageProcessing
 {
+    public function __construct(
+        protected ImagePathServiceInterface $pathService
+    ) {}
+
     /**
      * Handle the event.
      */
@@ -30,18 +34,17 @@ class CheckAndDispatchImageProcessing
             'metadata' => $image->metadata ? 'ready' : 'pending',
             'faces_checked' => $image->faces_checked ? 'ready' : 'pending',
             'thumbnail_filename' => $image->thumbnail_filename ? 'ready' : 'pending',
+            'webp_converted' => str_ends_with($image->filename, '.webp') ? 'ready' : 'pending',
         ]);
 
-        // Проверяем что ВСЕ jobs завершены
-        if ($this->isReadyForProcessing($image)) {
-            Log::info('All jobs completed, dispatching ImageProcessJob', [
+        // Проверяем что ВСЕ jobs завершены (включая ImageProcessJob)
+        if ($this->isReadyForCleanup($image)) {
+            Log::info('All jobs completed, deleting JPG', [
                 'image_id' => $event->imageId
             ]);
 
-            // Dispatch ImageProcessJob для финальной обработки
-            ImageProcessJob::dispatch([
-                'image_id' => $event->imageId
-            ])->onQueue('images');
+            // Удаляем JPG файл
+            $this->deleteJpgFile($image);
         } else {
             Log::debug('Not all jobs completed yet', [
                 'image_id' => $event->imageId
@@ -50,22 +53,54 @@ class CheckAndDispatchImageProcessing
     }
 
     /**
-     * Проверяет готовность изображения к финальной обработке
+     * Проверяет готовность к удалению JPG
      */
-    private function isReadyForProcessing(Image $image): bool
+    private function isReadyForCleanup(Image $image): bool
     {
-        // Проверяем что ImageProcessJob ещё не запускалась
-        // (чтобы не запустить дважды если несколько events придут одновременно)
-        if ($image->hash || $image->phash) {
-            Log::debug('ImageProcessJob already completed', [
-                'image_id' => $image->id
+        // Все 4 jobs должны быть завершены:
+        return $image->metadata !== null                      // MetadataProcessJob
+            && $image->faces_checked === true                 // FaceProcessJob
+            && $image->thumbnail_filename !== null            // ThumbnailProcessJob
+            && str_ends_with($image->filename, '.webp');      // ImageProcessJob (hash + WebP)
+    }
+
+    /**
+     * Удаляет JPG файл после успешной WebP конвертации
+     */
+    private function deleteJpgFile(Image $image): void
+    {
+        // Ищем соответствующий JPG файл
+        $jpgFilename = pathinfo($image->filename, PATHINFO_FILENAME) . '.jpg';
+        $jpgPath = $this->pathService->getImagePathByParams(
+            $image->disk,
+            $image->path,
+            $jpgFilename
+        );
+
+        // Проверяем что JPG существует
+        if (!file_exists($jpgPath)) {
+            Log::debug('JPG file not found, already deleted or never existed', [
+                'image_id' => $image->id,
+                'jpg_path' => $jpgPath
             ]);
-            return false;
+            return;
         }
 
-        // Все обязательные jobs должны быть завершены
-        return $image->metadata !== null
-            && $image->faces_checked === true
-            && $image->thumbnail_filename !== null;
+        // Удаляем JPG
+        try {
+            unlink($jpgPath);
+
+            Log::info('JPG deleted after all jobs completed', [
+                'image_id' => $image->id,
+                'jpg_filename' => $jpgFilename,
+                'webp_filename' => $image->filename
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Failed to delete JPG file', [
+                'image_id' => $image->id,
+                'jpg_path' => $jpgPath,
+                'error' => $e->getMessage()
+            ]);
+        }
     }
 }

@@ -101,11 +101,11 @@ class ImageQueueDispatcher implements ImageQueueDispatcherInterface
         $data = ['image_id' => $image->id];
 
         if ($dryRun) {
-            Log::info('[DRY-RUN] Would dispatch parallel jobs for image', [
+            Log::info('[DRY-RUN] Would dispatch 4 parallel jobs for image', [
                 'image_id' => $image->id,
                 'mode' => $mode,
-                'jobs' => ['thumbnail', 'metadata', 'face'],
-                'note' => 'ImageProcessJob will be triggered by event listener'
+                'jobs' => ['thumbnail', 'metadata', 'face', 'image'],
+                'note' => 'Listener will delete JPG after all jobs complete'
             ]);
             return [
                 'thumbnail' => 'dry-run',
@@ -122,26 +122,25 @@ class ImageQueueDispatcher implements ImageQueueDispatcherInterface
                 $statuses['thumbnail'] = $this->executeSync(ThumbnailProcessJob::class, $data, 'Thumbnail', $image->id, $debug);
                 $statuses['metadata'] = $this->executeSync(MetadataProcessJob::class, $data, 'Metadata', $image->id, $debug);
                 $statuses['face'] = $this->executeSync(FaceProcessJob::class, $data, 'Face', $image->id, $debug);
-                // ImageProcessJob будет запущена через event listener
-                $statuses['image'] = 'pending';
+                $statuses['image'] = $this->executeSync(ImageProcessJob::class, $data, 'Image', $image->id, $debug);
             } else {
-                // Queue режим - dispatch параллельно
+                // Queue режим - dispatch ВСЕ 4 jobs параллельно!
                 ThumbnailProcessJob::dispatch($data)->onQueue(config('queue.name.thumbnails'));
                 MetadataProcessJob::dispatch($data)->onQueue(config('queue.name.metadatas'));
                 FaceProcessJob::dispatch($data)->onQueue(config('queue.name.faces'));
-                // ImageProcessJob будет запущена через event listener
+                ImageProcessJob::dispatch($data)->onQueue(config('queue.name.images')); // Теперь тоже параллельно!
 
                 $statuses = [
                     'thumbnail' => 'queued',
                     'metadata' => 'queued',
                     'face' => 'queued',
-                    'image' => 'pending', // Будет запущена listener'ом автоматически
+                    'image' => 'queued',
                 ];
 
-                Log::info('Jobs dispatched in parallel', [
+                Log::info('All 4 jobs dispatched in parallel', [
                     'image_id' => $image->id,
-                    'jobs_count' => 3,
-                    'note' => 'ImageProcessJob will be triggered by event listener'
+                    'jobs_count' => 4,
+                    'note' => 'Listener will delete JPG after all jobs complete'
                 ]);
             }
 
