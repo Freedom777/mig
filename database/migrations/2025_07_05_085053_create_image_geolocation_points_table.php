@@ -18,7 +18,7 @@ return new class extends Migration
 
             $table->foreign('image_geolocation_address_id')
                 ->references('id')->on('image_geolocation_addresses')
-                ->onDelete('set null')->onUpdate('restrict');
+                ->onDelete('set null')->onUpdate('cascade');
         });
     }
 
