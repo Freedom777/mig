@@ -15,10 +15,9 @@ return new class extends Migration
     {
         Schema::create('faces', function (Blueprint $table) {
             $table->id();
-            $table->unsignedBigInteger('image_id')->nullable(); // nullable for updating afterward
-            $table->foreignId('person_id')->nullable()->constrained('persons')->nullOnDelete();
+            $table->foreignId('image_id')->nullable()->constrained('images')->cascadeOnUpdate()->cascadeOnDelete();
+            $table->foreignId('person_id')->nullable()->constrained('persons')->cascadeOnUpdate()->nullOnDelete();
             $table->unsignedTinyInteger('face_index');
-            // $table->string('name')->nullable();
             $table->json('encoding')->nullable();
             $table->float('quality_score')->nullable();
             $table->json('quality_details')->nullable();
@@ -26,10 +25,6 @@ return new class extends Migration
             $table->enum('status', FaceStatusEnum::values())->default(FaceStatusEnum::Process);
             $table->softDeletes();
             $table->timestamps();
-
-            $table->foreign('image_id')
-                ->references('id')->on('images')
-                ->onDelete('restrict')->onUpdate('restrict');
         });
     }
 
