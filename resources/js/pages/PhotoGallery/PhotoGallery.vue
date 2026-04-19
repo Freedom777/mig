@@ -99,6 +99,14 @@ const loadMorePhotos = () => {
     }
 }
 
+// Удаление фото из списка после успешного DELETE
+const onPhotoDeleted = (photoId) => {
+    photos.value = {
+        ...photos.value,
+        data: photos.value.data.filter(p => p.id !== photoId)
+    }
+}
+
 onMounted(async () => {
     // Фильтры загружаем для всех (и залогиненных, и незалогиненных)
     await fetchFilters()
@@ -120,12 +128,14 @@ onMounted(async () => {
                     @update:selected-filters="selectedFilters = $event"
                     @filters-changed="onFiltersChanged"
                 />
-                
+
                 <!-- Сетка фотографий на всю ширину -->
                 <div class="photo-content">
                     <PhotoGrid
                         :photos="photos"
                         :on-load-more="loadMorePhotos"
+                        :is-admin="isAuthenticated"
+                        @photo-deleted="onPhotoDeleted"
                     />
                 </div>
             </AppContent>
@@ -142,12 +152,13 @@ onMounted(async () => {
             @update:selected-filters="selectedFilters = $event"
             @filters-changed="onFiltersChanged"
         />
-        
+
         <!-- Сетка фотографий на всю ширину -->
         <div class="photo-content-public">
             <PhotoGrid
                 :photos="photos"
                 :on-load-more="loadMorePhotos"
+                :is-admin="false"
             />
         </div>
     </div>

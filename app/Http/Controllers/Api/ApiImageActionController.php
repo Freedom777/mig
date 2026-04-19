@@ -11,6 +11,7 @@ use App\Models\Image;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rules\Enum;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Symfony\Component\HttpFoundation\Response;
@@ -102,6 +103,72 @@ class ApiImageActionController extends Controller
         $image->update(['status' => $validated['status']]);
 
         return response()->json(['status' => $image->status]);
+    }
+
+    /**
+     * Update image fields
+     *
+     * @route PATCH /api/images/{image}
+     */
+    public function update(Image $image, Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'status' => ['sometimes', new Enum(ImageStatusEnum::class)],
+        ]);
+
+        $image->update($validated);
+
+        return response()->json(['success' => true, 'image' => $image]);
+    }
+
+    /**
+     * Delete image with all associated files
+     *
+     * @route DELETE /api/images/{image}
+     */
+    public function destroy(Image $image): JsonResponse
+    {
+        try {
+            // Удаляем оригинальный файл
+            $fullPath = $this->pathService->getImagePathByObj($image);
+            if (file_exists($fullPath)) {
+                unlink($fullPath);
+            }
+
+            // Удаляем thumbnail
+            $thumbnailPath = $this->pathService->getExistingThumbnailPath($image);
+            if ($thumbnailPath && file_exists($thumbnailPath)) {
+                unlink($thumbnailPath);
+            }
+
+            // Удаляем debug-изображение (с рамками лиц)
+            $debugPath = $this->pathService->getDebugImagePath($image);
+            if ($debugPath && file_exists($debugPath)) {
+                unlink($debugPath);
+            }
+
+            // Удаляем запись из БД (faces удалятся каскадно через FK)
+            $image->delete();
+
+            Log::info('Image deleted by admin', [
+                'image_id' => $image->id,
+                'filename' => $image->filename,
+                'user_id'  => auth()->id(),
+            ]);
+
+            return response()->json(['success' => true]);
+
+        } catch (\Exception $e) {
+            Log::error('Failed to delete image', [
+                'image_id' => $image->id,
+                'error'    => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Ошибка при удалении: ' . $e->getMessage(),
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
+        }
     }
 
     /**

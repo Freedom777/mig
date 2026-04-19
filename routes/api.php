@@ -20,20 +20,10 @@ Route::post('/photos', [ApiPhotoController::class, 'index']);
 Route::get('/filters', [ApiFilterController::class, 'index']);
 
 
-// !!!!!!!!!! REMOVE
-// Route::get('/thumbnail/{id}.jpg', [ApiImageActionController::class, 'showThumbnail']);
-
-// Группа для API с префиксом и middleware (например, для авторизации)
-// Route::middleware(['api', 'auth:sanctum'])->group(function () {
-// });
-
 Route::controller(ApiFaceController::class)->prefix('face')->group(function () {
     Route::get('{image}', 'list');          // GET /api/face/123
     Route::post('{image}', 'save');         // POST /api/face/123
     Route::delete('{image}/{faceIndex}', 'remove'); // DELETE /api/face/123/0
-    /*Route::get('list', 'list');
-    Route::post('save', 'save');
-    Route::delete('remove', 'remove');*/
 });
 
 Route::controller(ApiFaceController::class)->prefix('images')->group(function () {
@@ -46,23 +36,18 @@ Route::controller(ApiFaceController::class)->prefix('images')->group(function ()
 Route::post('image/new-upload', [ApiImageActionController::class, 'newUpload']);
 
 Route::controller(ApiImageActionController::class)->prefix('images')->group(function () {
+    // Публичные маршруты
     Route::get('{image}/debug', 'debug');
     Route::get('{image}/nearby', 'nearby');
-    Route::patch('{image}', 'update');
-    Route::delete('{image}', 'destroy');
-    // Route::get('{image}.jpg', 'show');
-    Route::patch('{image}/status', 'status');
-
-
-    /*
-    Route::get('{id}/nearby', 'nearby');
-    Route::get('debug/{id}.jpg', 'showDebugImage');
-
-    Route::get('{id}/remove', 'remove');
-    */
-
     Route::post('new-upload', 'newUpload');
     Route::get('upload', 'newUpload');
+
+    // Маршруты только для авторизованных пользователей
+    Route::middleware('auth:sanctum')->group(function () {
+        Route::patch('{image}', 'update');
+        Route::delete('{image}', 'destroy');
+        Route::patch('{image}/status', 'status');
+    });
 });
 
 Route::get('/photos/year-counts', function () {

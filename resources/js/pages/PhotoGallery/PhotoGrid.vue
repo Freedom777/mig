@@ -16,8 +16,14 @@ const props = defineProps({
         type: Function,
         required: true,
         default: null
+    },
+    isAdmin: {
+        type: Boolean,
+        default: false
     }
 })
+
+const emit = defineEmits(['photoDeleted'])
 
 const selectedImage = ref(null)
 const isLoading = ref(false)
@@ -30,6 +36,10 @@ const openModal = (imageUrl) => {
 
 const closeModal = () => {
     selectedImage.value = null
+}
+
+const onPhotoDeleted = (photoId) => {
+    emit('photoDeleted', photoId)
 }
 
 const loadMore = async () => {
@@ -108,7 +118,9 @@ onUnmounted(() => {
                 v-for="photo in photos.data"
                 :key="photo.id"
                 :photo="photo"
+                :is-admin="isAdmin"
                 @open="openModal"
+                @deleted="onPhotoDeleted"
             />
         </div>
 
