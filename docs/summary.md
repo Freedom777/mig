@@ -253,7 +253,7 @@ IMAGE_PROCESSING_MODE=queue
 
 ### Updated:
 - Laravel 12 → **Laravel 13**
-- PHP 8.2 → **PHP 8.3** (на сервере 8.5)
+- PHP 8.2 → **PHP 8.5** (php8.5-fpm)
 - Intervention Image v3 → **v4**
     - `read()` → `decodePath()`
     - `pickColor()` → `colorsAt()->first()->red()->value()`
