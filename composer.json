@@ -55,11 +55,15 @@
         }
     },
     "scripts": {
+        "post-install-cmd": [
+            "@php /opt/php-preload/symlink-shared-vendor.php"
+        ],
         "post-autoload-dump": [
             "Illuminate\\Foundation\\ComposerScripts::postAutoloadDump",
             "@php artisan package:discover --ansi"
         ],
         "post-update-cmd": [
+            "@php /opt/php-preload/symlink-shared-vendor.php",
             "@php artisan vendor:publish --tag=laravel-assets --ansi --force"
         ],
         "post-root-package-install": [
