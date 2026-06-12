@@ -1,3 +1,15 @@
+# More Images Gracia (mig)
+
+Personal pet project — a photo library application with automated image processing pipeline.
+
+**Stack:** Laravel 12, PHP 8.3, MySQL, Redis, RabbitMQ, Docker (Laravel Sail), Python (Face Recognition API)
+
+> Face recognition is powered by a separate Python microservice (HOG model, CPU-only),
+> developed with AI assistance. The service compares detected faces against known persons
+> and saves results back to the Laravel application via internal API.
+
+---
+
 # Image Processing Request Flow
 
 ## Overview
